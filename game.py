@@ -3,6 +3,44 @@ import os
 import time
 import random
 import json
+import numpy as np
+from collections import deque
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+
+class AgentMemory:
+    def __init__(self, max_size=100, embed_dim=32):
+        # Raw text events
+        self.events = deque(maxlen=max_size)
+        # Simple TF‑IDF vectorizer to embed text → high‑dim sparse
+        self.vectorizer = TfidfVectorizer(max_features=embed_dim)
+        # Running corpus
+        self.corpus = []
+
+    def write(self, event: str):
+        # Add event to memory
+        self.events.append(event)
+        self.corpus.append(event)
+        self.vectorizer.fit(self.corpus)
+
+    def read(self, query: str, top_k: int = 5) -> np.ndarray:
+        # Return the average embedding of the top_k most relevant past events
+        if not self.events:
+            return np.zeros(self.vectorizer.max_features)
+
+        # Embed all events + query
+        all_texts = list(self.events) + [query]
+        tfidf = self.vectorizer.transform(all_texts).toarray()
+        query_vec = tfidf[-1]
+        event_vecs = tfidf[:-1]
+
+        # Cosine similarity
+        sims = event_vecs @ query_vec / (np.linalg.norm(event_vecs, axis=1)*np.linalg.norm(query_vec)+1e-8)
+        top_idxs = np.argsort(sims)[-top_k:]
+
+        # Return the average embeddings
+        return event_vecs[top_idxs].mean(axis=0)
+
 
 class Player:
     def __init__(self, role, name):
@@ -41,6 +79,7 @@ class AI_Player(Player):
     def __init__(self, name):
         super().__init__("Villager", name)
         self.suspicions = {} # Key values will be the name of another player
+        self.memory = AgentMemory(max_size=100, embed_dim=32)
 
     def vote(self, alive_targets):
         # Vote for the most suspicious alive target
@@ -102,6 +141,7 @@ class AI_Player(Player):
             Each score should be:
             -1.0 (completely innocent) to 1.0 (certainly Mafia)
             If scores are already -1.0 or 1.0, do not change them.
+            Do not remove any players from the suspicion scores, even if they are not mentioned in the discussion.
 
             Recent discussion:
             {history_str}
@@ -129,25 +169,19 @@ class AI_Player(Player):
         # Create memory of recent actions based on role
         mem = ""
         if self.role == "Doctor":
-            saved_names = [p.name for p in game_manager.last_protected]
-            if saved_names:
-                survival = []
-                for name in saved_names:
-                    player = next(p for p in alive if p.name == name)
-                    status = 'survived' if player.is_alive else 'died'
-                    survival.append(f"{name} ({status})")
-                mem = "- You protected: " + ', they '.join(survival)
+            protected = next((p for doctor, p in game_manager.last_protected if doctor.name == self.name))
+            status = 'survived' if protected.is_alive else 'died'
+            mem = f"- You protected: {protected.name} ({status})"
 
         elif self.role == "Investigator":
-            inv_lines = []
-            for name, is_mafia in game_manager.last_investigated:
-                result = "Mafia" if is_mafia else "not Mafia"
-                inv_lines.append(f"{name} ({result})")
-            mem += "- You investigated: " + ', '.join(inv_lines)
+            match = next(((name, is_mafia) for investigator, name, is_mafia in game_manager.last_investigated if investigator.name == self.name))
+            name, is_mafia = match
+            result = "Mafia" if is_mafia else "not Mafia"
+            mem += f"- You investigated: {name} ({result})"
 
         elif self.role == "Mafia":
-            kill_names = [p.name for p in game_manager.last_targeted]
-            mem += "- Your mafia kills: " + ', '.join(kill_names)
+            kill_names = [p.name for _, p in game_manager.last_targeted]
+            mem += "- Mafia kills last night: " + ', '.join(kill_names)
 
         prompt = f"""
             You are {self.name}, a {self.role} in a text-based Mafia game.
@@ -296,6 +330,10 @@ class Game_Manager:
             print("\nDuring the night, the following events occurred:")
             for d in self.last_deaths:
                 print(f"{d.name} has died.")
+
+                for player in self.get_alive_players():
+                    if isinstance(player, AI_Player):
+                        player.memory.write(f"{d.name} was killed during the night.")
         else:
             print("\nNo one was killed during the night.")
         print("\nDiscussion starts now (2 minutes).")
@@ -313,11 +351,11 @@ class Game_Manager:
         death = []
         protected = []
         alive_players = self.get_alive_players()
-        self.last_deaths = []
-        self.last_protected = []
-        self.last_investigated = []
-        self.last_targeted = []
-        
+        self.last_deaths.clear()
+        self.last_protected.clear()
+        self.last_investigated.clear()
+        self.last_targeted.clear()
+
         # Doctor's turn
         doctors = [p for p in alive_players if p.role == "Doctor"]
         eligible_targets = alive_players.copy()
@@ -335,7 +373,10 @@ class Game_Manager:
                 target.is_protected = True
                 protected.append(target)
                 eligible_targets.remove(target)
-                self.last_protected.append(target)
+                self.last_protected.append((doctor, target))
+
+                desc = f"{doctor.name} protected {target.name}"
+                doctor.memory.write(desc)
 
         # Mafia's turn
         mafia_players = [p for p in alive_players if p.role == "Mafia"]
@@ -357,7 +398,11 @@ class Game_Manager:
                 else:
                     target.is_protected = False
                 eligible_targets.remove(target)
-                self.last_targeted.append(target)
+                self.last_targeted.append((mafia, target))
+
+                desc = f"{mafia.name} targeted {target.name} for elimination"
+                desc += " (killed)" if not target.is_alive else " (protected)"
+                mafia.memory.write(desc)
 
         # Investigator's turn
         investigators = [p for p in alive_players if p.role == "Investigator"]
@@ -381,7 +426,10 @@ class Game_Manager:
                 if isinstance(investigator, AI_Player):
                     investigator.update_suspicion_investigation(target, target.role == "Mafia")
 
-                self.last_investigated.append((target.name, target.role == "Mafia"))
+                self.last_investigated.append((investigator, target.name, target.role == "Mafia"))
+
+                desc = f"{investigator.name} investigated {target.name}: {'Mafia' if target.role=='Mafia' else 'Innocent'}"
+                investigator.memory.write(desc)
 
         for p in protected:
             p.is_protected = False
@@ -392,20 +440,15 @@ class Game_Manager:
         print(f"\nDiscussion phase begins. Players can discuss their suspicions and strategies for {time_limit} seconds.\n")
 
         start_time = time.time()
-        elapsed = 0
         alive_players = self.get_alive_players()
 
-        while elapsed < time_limit:
-            num_speakers = random.randint(1, min(3, len(alive_players)))
-            speakers = random.sample(alive_players, num_speakers)
-
-            for player in speakers:
+        while time.time() - start_time < time_limit:
+            for player in alive_players:
                 argument = player.generate_argument(self)
                 print(f"{player.name}: {argument.strip()}\n")
                 self.discussion_history[self.round_number].append((player.name, argument))
 
-            time.sleep(10)
-            elapsed = time.time() - start_time
+            time.sleep(5)
 
         print("End of discussion phase.")
 
@@ -428,6 +471,9 @@ class Game_Manager:
                 else:
                     target = player.vote(alive)
             votes[target] = votes.get(target, 0) + 1
+
+            if isinstance(player, AI_Player):
+                player.memory.write(f"{player.name} voted for {target.name}")
 
         max_votes = max(votes.values())
         most_voted = [p for p, v in votes.items() if v == max_votes]
@@ -488,14 +534,18 @@ if __name__ == "__main__":
     game_manager.add_player(AI_Player("Grace"))
     game_manager.add_player(AI_Player("Dana"))
     game_manager.add_player(AI_Player("Eve"))
+    game_manager.add_player(AI_Player("Hank"))
+    game_manager.add_player(AI_Player("Ivy"))
 
     game_manager.players[0].role = "Villager"
     game_manager.players[1].role = "Villager"
     game_manager.players[2].role = "Villager"
     game_manager.players[3].role = "Villager"
-    game_manager.players[4].role = "Mafia"
+    game_manager.players[4].role = "Villager"
     game_manager.players[5].role = "Mafia"
-    game_manager.players[6].role = "Doctor"
-    game_manager.players[7].role = "Investigator"
+    game_manager.players[6].role = "Mafia"
+    game_manager.players[7].role = "Doctor"
+    game_manager.players[8].role = "Investigator"
+    game_manager.players[9].role = "Villager"
 
     game_manager.start_game()
