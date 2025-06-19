@@ -23,7 +23,7 @@ class AgentMemory:
         self.corpus.append(event)
         self.vectorizer.fit(self.corpus)
 
-    def read(self, query: str, top_k: int = 5) -> np.ndarray:
+    def read(self, query, top_k=5):
         # Return the average embedding of the top_k most relevant past events
         if not self.events:
             return np.zeros(self.vectorizer.max_features)
@@ -40,6 +40,16 @@ class AgentMemory:
 
         # Return the average embeddings
         return event_vecs[top_idxs].mean(axis=0)
+    
+    def get_memory(self):
+        # Return the events as a array of vectors with length 32
+        if not self.events:
+            return np.zeros(32, dtype=np.float32)
+        tfidf = self.vectorizer.transform([' '.join(self.events)]).toarray()[0]
+
+        mem = np.zeros(32, dtype=np.float32)
+        mem[:min(32, len(tfidf))] = tfidf[:32]
+        return mem
 
 
 class Player:
@@ -283,6 +293,7 @@ class Game_Manager:
         self.last_protected = []
         self.last_investigated = []
         self.last_targeted = []
+        self.already_investigated = set()
 
     def add_player(self, player):
         self.players.append(player)
@@ -303,24 +314,33 @@ class Game_Manager:
         mafia_count = sum(1 for p in alive_players if p.role == "Mafia")
         # Villagers win if all mafia are eliminated
         if mafia_count == 0:
-            print("\nVillagers win! All Mafia members have been eliminated.")
-            return True
+            return True, "Villagers"
         # Mafia win if they outnumber or equal villagers
         if mafia_count >= len(alive_players) - mafia_count:
-            print("\nMafia wins! The Mafia outnumber the Villagers.")
-            return True
+            return True, "Mafia"
+        return False, None
 
     def game_loop(self):
         while True:
             print(f"\nRound {self.round_number} begins!")
             self.discussion_history[self.round_number] = []
             self.last_deaths = self.night_phase()
-            if self.check_win_condition():
+            done, winner = self.check_win_condition()
+            if done:
+                if winner == "Villagers":
+                    print("\nVillagers win! All Mafia members have been eliminated.")
+                else:
+                    print("\nMafia wins! The Mafia outnumber the Villagers.")
                 break
             for player in self.get_alive_players():
                 print(f"{player.name}'s suspicion meter: {player.suspicions if isinstance(player, AI_Player) else 'N/A'}")
             self.day_phase()
-            if self.check_win_condition():
+            done, winner = self.check_win_condition()
+            if done:
+                if winner == "Villagers":
+                    print("\nVillagers win! All Mafia members have been eliminated.")
+                else:
+                    print("\nMafia wins! The Mafia outnumber the Villagers.")
                 break
             self.round_number += 1
 
@@ -406,18 +426,19 @@ class Game_Manager:
 
         # Investigator's turn
         investigators = [p for p in alive_players if p.role == "Investigator"]
+        eligible_targets = [p for p in alive_players if p.is_alive and p not in self.already_investigated]
         if investigators:
             for investigator in investigators:
                 print("\nInvestigators can choose a player to investigate.")
                 if isinstance(investigator, Human_Player):
                     print("Eligible players to investigate:")
-                    for t in alive_players:
+                    for t in eligible_targets:
                         if t.is_alive and t != investigator:
                             print(f"- {t.name}")
 
                 target = None
                 while target is None:
-                    target = investigator.vote_investigator(alive_players)
+                    target = investigator.vote_investigator(eligible_targets)
                 if target.role == "Mafia":
                     print(f"{investigator.name} discovers that {target.name} is a Mafia member.")
                 else:
@@ -427,6 +448,7 @@ class Game_Manager:
                     investigator.update_suspicion_investigation(target, target.role == "Mafia")
 
                 self.last_investigated.append((investigator, target.name, target.role == "Mafia"))
+                self.already_investigated.add(target)
 
                 desc = f"{investigator.name} investigated {target.name}: {'Mafia' if target.role=='Mafia' else 'Innocent'}"
                 investigator.memory.write(desc)
