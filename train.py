@@ -1,12 +1,12 @@
 import numpy as np
 from pettingzoo.utils import ParallelEnv
-from gymnasium.spaces import Discrete, Box
-from game import Game_Manager, AI_Player
+from gymnasium.spaces import Discrete, Box, Dict
 from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.tune.registry import register_env
 import torch
+from game import Game_Manager, AI_Player
 
 
 class MafiaEnv(ParallelEnv):
@@ -21,13 +21,17 @@ class MafiaEnv(ParallelEnv):
         self.phase = "night"
         self.night_actions = {}
         self.active_agents = self.agents.copy()
+        self.last_invalid_actions = []
+        self.game = None
 
         self.action_spaces = {
             agent: Discrete(num_players) for agent in self.agents
         }
 
-        # Observation space: alive mask + suspicions + memory + role one-hot + phase + round number
-        self.obs_dim = num_players + num_players + memory_dim + 4 + 1 + 1
+        # Observation space: alive mask + suspicions + memory + role one-hot + phase + round number + action mask
+        # Note action mask does not actually work because ray does not support action masks
+        # So, I just included it so the agent learns faster and also included a penalty for invalid actions
+        self.obs_dim = num_players + num_players + memory_dim + 4 + 1 + 1 + num_players
         self.observation_spaces = {
             agent: Box(
                 low=-5.0,
@@ -36,7 +40,6 @@ class MafiaEnv(ParallelEnv):
                 dtype=np.float32
             ) for agent in self.agents
         }
-        self.game = None
 
     def reset(self, *, seed=None, options=None):
         self.game = Game_Manager()
@@ -97,9 +100,9 @@ class MafiaEnv(ParallelEnv):
 
             # Makes sure actions are valid else randomly chooses
             action = actions.get(player.name, None)
-            valid_indices = [i for i, p in enumerate(self.game.players) if p.is_alive and p != player]
-            if action not in valid_indices:
-                action = np.random.choice(valid_indices)
+            action_mask = self._create_action_mask(player)
+            if action_mask[action] == 0:
+                action = np.random.choice(np.where(action_mask == 1)[0])
             target = self.game.players[action]
             votes[target.name] = votes.get(target.name, 0) + 1
             player.memory.write(f"{player.name} voted {target.name}")
@@ -143,20 +146,19 @@ class MafiaEnv(ParallelEnv):
         self.game.last_protected = []
         self.game.last_targeted = []
         self.game.last_investigated = []
+        self.last_invalid_actions = []
 
         for player in self.game.get_alive_players():
-            if player.name not in required_agents:
-                continue
-            if not player.is_alive:
+            if player.name not in required_agents or not player.is_alive:
                 continue
 
-            action = str(self.night_actions[player.name])
-            valid = [p.name.split("_")[1] for p in self.game.get_alive_players() if p.name != player.name]
+            action = self.night_actions[player.name]
+            action_mask = self._create_action_mask(player)
+            if action_mask[action] == 0:
+                action = np.random.choice(np.where(action_mask == 1)[0])
+                self.last_invalid_actions.append(player)
 
-            if action not in valid:
-                action = np.random.choice(valid)
-            target_idx = int(action)
-            target = self.game.players[target_idx]
+            target = self.game.players[action]
 
             if player.role == 'Doctor':
                 target.is_protected = True
@@ -164,23 +166,13 @@ class MafiaEnv(ParallelEnv):
                 player.memory.write(f"{player.name} protected {target.name}")
 
             elif player.role == 'Mafia':
-                valid = [p.name.split("_")[1] for p in self.game.get_alive_players() if p != player and p.role != 'Mafia']
-                if target_idx not in valid:
-                    target_idx = int(np.random.choice(valid))
-                target = self.game.players[target_idx]
                 self.game.last_targeted.append((player, target))
                 player.memory.write(f"{player.name} targeted {target.name}")
 
             elif player.role == 'Investigator':
-                valid = [p.name.split("_")[1] for p in self.game.get_alive_players() if p.name != player.name and p not in self.game.already_investigated]
-                if target_idx not in valid:
-                    target_idx = int(np.random.choice(valid))
-                target = self.game.players[target_idx]
-
                 res = (target.role == 'Mafia')
 
                 self.game.last_investigated.append((player, target.name, res))
-                self.game.last_investigated.append((player, target.name, None))
                 player.update_suspicion_investigation(target, res)
                 player.memory.write(f"{player.name} investigated {target.name}, result: {'Mafia' if res else 'Not Mafia'}")
 
@@ -196,6 +188,37 @@ class MafiaEnv(ParallelEnv):
         # Clear protection
         for player in self.game.players:
             player.is_protected = False
+
+    def _create_action_mask(self, player):
+        action_mask = np.zeros(self.num_players, dtype=np.float32)
+        if self.phase == "night":
+            if player.role == "Mafia":
+                for i, p in enumerate(self.game.players):
+                    if p.is_alive and p.role != "Mafia":
+                        action_mask[i] = 1.0
+            elif player.role == "Doctor":
+                for i, p in enumerate(self.game.players):
+                    if p.is_alive and p != player:
+                        action_mask[i] = 1.0
+            elif player.role == "Investigator":
+                valid_targets = [i for i, p in enumerate(self.game.players)
+                                    if p.is_alive and p != player and p not in self.game.already_investigated]
+                if valid_targets:
+                    for i in valid_targets:
+                        action_mask[i] = 1.0
+                else:
+                    # If no targets that haven't been investigated, allow all alive players
+                    for i, p in enumerate(self.game.players):
+                        if p.is_alive and p != player:
+                            action_mask[i] = 1.0
+            else:
+                pass # Villager has no actions at night
+        else:
+            for i, p in enumerate(self.game.players):
+                if p.is_alive and p != player:
+                    action_mask[i] = 1.0
+        
+        return action_mask
 
     def _build_obs(self):
         obs = {}
@@ -221,7 +244,9 @@ class MafiaEnv(ParallelEnv):
             phase = np.array([1.0 if self.phase == 'night' else 0.0], dtype=np.float32)
             round_number = np.array([float(self.game.round_number)], dtype=np.float32)
 
-            vec = np.concatenate([alive_mask, suspicions, mem, onehot, phase, round_number])
+            action_mask = self._create_action_mask(player)
+
+            vec = np.concatenate([alive_mask, suspicions, mem, onehot, phase, round_number, action_mask])
             obs[player.name] = vec.astype(np.float32)
     
         return obs
@@ -266,6 +291,9 @@ class MafiaEnv(ParallelEnv):
                 else:
                     val = 0.0
             rewards[player.name] = val
+            for player in self.last_invalid_actions:
+                if player.name == name:
+                    rewards[name] -= 1.0
         return rewards
 
     def render(self):
@@ -326,7 +354,7 @@ if __name__ == "__main__":
     analysis = tune.run(
         "PPO",
         config=config.to_dict(),
-        stop={"training_iteration": 50},
+        stop={"training_iteration": 25},
         checkpoint_at_end=True,
         checkpoint_freq=10,
         keep_checkpoints_num=5,

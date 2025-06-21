@@ -2,7 +2,7 @@ import ray
 from ray.rllib.algorithms.ppo import PPO
 from ray.tune.registry import register_env
 from ray.rllib.env import ParallelPettingZooEnv
-from ppo import MafiaEnv
+from train import MafiaEnv
 import torch
 
 register_env(
@@ -12,7 +12,7 @@ register_env(
 
 ray.init(ignore_reinit_error=True)
 
-checkpoint_path = "/Users/qiaoe27/ray_results/PPO_2025-06-19_13-50-19/PPO_mafia_dd533_00000_0_2025-06-19_13-50-19/checkpoint_000003"
+checkpoint_path = "/Users/qiaoe27/ray_results/PPO_2025-06-21_12-05-28/PPO_mafia_8cc60_00000_0_2025-06-21_12-05-28/checkpoint_000002"
 algo = PPO.from_checkpoint(checkpoint_path)
 
 env = MafiaEnv()

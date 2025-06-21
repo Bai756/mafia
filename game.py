@@ -6,6 +6,48 @@ import json
 import numpy as np
 from collections import deque
 from sklearn.feature_extraction.text import TfidfVectorizer
+import torch
+import ray
+from ray.rllib.algorithms.ppo import PPO
+from ray.tune.registry import register_env
+from ray.rllib.env import ParallelPettingZooEnv
+
+
+# TODO:
+# Figure out why sometimes agents vote twice
+# Fix suspicion scores being removed when updated
+# Hank investigated player that was already dead
+
+
+class ModelManager:
+    def __init__(self, checkpoint_path):
+        from train import MafiaEnv
+        register_env(
+            "mafia",
+            lambda cfg: ParallelPettingZooEnv(MafiaEnv(**cfg))
+        )
+        ray.init(ignore_reinit_error=True)
+
+        self.algo = PPO.from_checkpoint(checkpoint_path)
+
+        self.modules = {
+            policy_id: self.algo.get_module(policy_id)
+            for policy_id in ["Villager", "Mafia", "Doctor", "Investigator"]
+        }
+
+        villager_module = self.modules["Villager"]
+        self.obs_dim = villager_module.observation_space.shape[0]
+    
+    def get_action(self, obs, role):
+        module = self.modules[role]
+
+        tensor_obs = torch.as_tensor(obs, dtype=torch.float32).reshape(1, -1)
+        
+        output = module.forward_inference({"obs": tensor_obs})
+        action_dist = output["action_dist_inputs"]
+        
+        action = torch.argmax(action_dist, dim=-1).item()
+        return action
 
 
 class AgentMemory:
@@ -91,15 +133,22 @@ class AI_Player(Player):
         self.suspicions = {} # Key values will be the name of another player
         self.memory = AgentMemory(max_size=100, embed_dim=32)
 
-    def vote(self, alive_targets):
-        # Vote for the most suspicious alive target
-        eligible_targets = [p for p in alive_targets if p != self]
-        max_suspicion = max(self.suspicions.get(p.name, 0) for p in eligible_targets)
-        most_suspicious = [p for p in eligible_targets if self.suspicions.get(p.name, 0) == max_suspicion]
-        return super().vote(random.choice(most_suspicious))
+    def vote(self, alive_targets, game_manager=None):
+        if not game_manager or not game_manager.use_model:
+            return self._vote_most_suspicious(alive_targets)
+        
+        obs = game_manager.get_observation(self)
+        action = game_manager.model.get_action(obs, self.role)
+        target = game_manager.players[action]
+        
+        valid_targets = [p for p in alive_targets if p != self]
+
+        if target not in valid_targets:
+            return self._vote_most_suspicious(alive_targets)
+        
+        return super().vote(target)
     
-    # Mafia already have eligible targets filtered
-    def vote_mafia(self, eligible_targets): 
+    def vote_mafia(self, eligible_targets): # Mafia already have eligible targets filtered
         # Vote for the least suspicious alive target
         min_suspicion = min(self.suspicions.get(p.name, 0) for p in eligible_targets)
         least_suspicious = [p for p in eligible_targets if self.suspicions.get(p.name, 0) == min_suspicion]
@@ -116,6 +165,12 @@ class AI_Player(Player):
         # Vote for the most suspicious alive target not confirmed to be mafia to investigate
         eligible_targets = [p for p in alive_targets if p != self]
         eligible_targets = [p for p in eligible_targets if self.suspicions.get(p.name, 0) < 1.0]
+        max_suspicion = max(self.suspicions.get(p.name, 0) for p in eligible_targets)
+        most_suspicious = [p for p in eligible_targets if self.suspicions.get(p.name, 0) == max_suspicion]
+        return super().vote(random.choice(most_suspicious))
+    
+    def _vote_most_suspicious(self, alive_targets):
+        eligible_targets = [p for p in alive_targets if p != self]
         max_suspicion = max(self.suspicions.get(p.name, 0) for p in eligible_targets)
         most_suspicious = [p for p in eligible_targets if self.suspicions.get(p.name, 0) == max_suspicion]
         return super().vote(random.choice(most_suspicious))
@@ -285,7 +340,7 @@ class AI_Player(Player):
 
 
 class Game_Manager:
-    def __init__(self):
+    def __init__(self, use_model=False):
         self.players = []
         self.round_number = 1
         self.last_deaths = []
@@ -294,6 +349,13 @@ class Game_Manager:
         self.last_investigated = []
         self.last_targeted = []
         self.already_investigated = set()
+
+        self.use_model = use_model
+        if use_model:
+            model_path = "/Users/qiaoe27/ray_results/PPO_2025-06-21_12-05-28/PPO_mafia_8cc60_00000_0_2025-06-21_12-05-28/checkpoint_000002"
+            self.model = ModelManager(model_path)
+
+        self.is_night = False
 
     def add_player(self, player):
         self.players.append(player)
@@ -345,6 +407,7 @@ class Game_Manager:
             self.round_number += 1
 
     def day_phase(self):
+        self.is_night = False
         print("\nDay phase begins.")
         if self.last_deaths:
             print("\nDuring the night, the following events occurred:")
@@ -367,6 +430,7 @@ class Game_Manager:
         self.voting_phase()
     
     def night_phase(self):
+        self.is_night = True
         print("\nNight phase begins.")
         death = []
         protected = []
@@ -388,7 +452,9 @@ class Game_Manager:
                         if t.is_alive and t != doctor:
                             print(f"- {t.name}")
                 target = None
-                while target is None:
+                if self.use_model:
+                    target = doctor.vote(eligible_targets, self)
+                else:
                     target = doctor.vote_doctor(eligible_targets)
                 target.is_protected = True
                 protected.append(target)
@@ -410,7 +476,9 @@ class Game_Manager:
                         if t != mafia:
                             print(f"- {t.name}")
                 target = None
-                while target is None:
+                if self.use_model:
+                    target = mafia.vote(eligible_targets, self)
+                else:
                     target = mafia.vote_mafia(eligible_targets)
                 if not target.is_protected:
                     target.is_alive = False
@@ -437,7 +505,9 @@ class Game_Manager:
                             print(f"- {t.name}")
 
                 target = None
-                while target is None:
+                if self.use_model:
+                    target = investigator.vote(eligible_targets, self)
+                else:
                     target = investigator.vote_investigator(eligible_targets)
                 if target.role == "Mafia":
                     print(f"{investigator.name} discovers that {target.name} is a Mafia member.")
@@ -455,6 +525,7 @@ class Game_Manager:
 
         for p in protected:
             p.is_protected = False
+
         print("\nEnd of night phase.")
         return death
         
@@ -470,7 +541,7 @@ class Game_Manager:
                 print(f"{player.name}: {argument.strip()}\n")
                 self.discussion_history[self.round_number].append((player.name, argument))
 
-            time.sleep(5)
+                time.sleep(3)
 
         print("End of discussion phase.")
 
@@ -486,12 +557,16 @@ class Game_Manager:
                 for t in alive:
                     if t != player:
                         print(f"- {t.name}")
-            target = None
-            while target is None:
-                if player.role == "Mafia":
-                    target = player.vote_mafia(alive)
+
+            if player.role == "Mafia":
+                if self.use_model:
+                    target = player.vote(alive, self)
                 else:
-                    target = player.vote(alive)
+                    target = player.vote_mafia(alive)
+            else:
+                target = player.vote(alive, self)
+            print(f"{player.name} ({player.role}) votes for {target.name} ({target.role})")
+
             votes[target] = votes.get(target, 0) + 1
 
             if isinstance(player, AI_Player):
@@ -523,9 +598,16 @@ class Game_Manager:
                     for t in most_voted:
                         if t != player:
                             print(f"- {t.name}")
-                target = None
-                while target is None:
-                    target = player.vote(most_voted)
+
+                if player.role == "Mafia":
+                    if self.use_model:
+                        target = player.vote(alive, self)
+                    else:
+                        target = player.vote_mafia(alive)
+                else:
+                    target = player.vote(alive, self)
+                print(f"{player.name} ({player.role}) votes for {target.name} ({target.role})")
+
                 revote[target] = revote.get(target, 0) + 1
 
             max_revote = max(revote.values())
@@ -543,12 +625,60 @@ class Game_Manager:
                 print(f"\nStill tied! Voting will be skipped for this round.")
         
         print("\nEnd of voting phase.")
+    
+    def _create_action_mask(self, player):
+        action_mask = np.zeros(len(self.players), dtype=np.float32)
+        if self.is_night == True:
+            if player.role == "Mafia":
+                for i, p in enumerate(self.players):
+                    if p.is_alive and p.role != "Mafia":
+                        action_mask[i] = 1.0
+            elif player.role == "Doctor":
+                for i, p in enumerate(self.players):
+                    if p.is_alive and p != player:
+                        action_mask[i] = 1.0
+            elif player.role == "Investigator":
+                valid_targets = [i for i, p in enumerate(self.players)
+                                    if p.is_alive and p != player and p not in self.already_investigated]
+                if valid_targets:
+                    for i in valid_targets:
+                        action_mask[i] = 1.0
+                else:
+                    # If no targets that haven't been investigated, allow all alive players
+                    for i, p in enumerate(self.players):
+                        if p.is_alive and p != player:
+                            action_mask[i] = 1.0
+            else:
+                pass # Villager has no actions at night
+        else:
+            for i, p in enumerate(self.players):
+                if p.is_alive and p != player:
+                    action_mask[i] = 1.0
+        
+        return action_mask
+
+    def get_observation(self, player):
+        alive_mask = np.array([1.0 if p.is_alive else 0.0 for p in self.players], dtype=np.float32)
+
+        suspicions = np.array([player.suspicions.get(p.name, 0.0) for p in self.players], dtype=np.float32)
+        mem = player.memory.get_memory().astype(np.float32)
+
+        role_map = {'Villager': 0, 'Mafia': 1, 'Doctor': 2, 'Investigator': 3}
+        onehot = np.array([0] * 4, dtype=np.float32)
+        onehot[role_map[player.role]] = 1
+
+        phase = np.array([1.0 if self.is_night else 0.0], dtype=np.float32)
+        round_number = np.array([float(self.round_number)], dtype=np.float32)
+
+        action_mask = self._create_action_mask(player)
+
+        return np.concatenate([alive_mask, suspicions, mem, onehot, phase, round_number, action_mask])
 
 
 if __name__ == "__main__":
-    game_manager = Game_Manager()
+    game_manager = Game_Manager(use_model=True)
 
-    game_manager.add_player(AI_Player("Zoe"))
+    game_manager.add_player(Human_Player("HumanPlayer"))
     game_manager.add_player(AI_Player("Alice"))
     game_manager.add_player(AI_Player("Bob"))
     game_manager.add_player(AI_Player("Charlie"))
