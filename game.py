@@ -13,12 +13,6 @@ from ray.tune.registry import register_env
 from ray.rllib.env import ParallelPettingZooEnv
 
 
-# TODO:
-# Figure out why sometimes agents vote twice
-# Fix suspicion scores being removed when updated
-# Hank investigated player that was already dead
-
-
 class ModelManager:
     def __init__(self, checkpoint_path):
         from train import MafiaEnv
@@ -102,7 +96,7 @@ class Player:
         self.is_protected = False
 
     def vote(self, target):
-        """Record a vote. Note that vote will always refer to a player class object."""
+        # Record a vote. Note that vote will always refer to a player class object
         print(f"{self.name} ({self.role}) votes {target.name} ({target.role})")
         return target
 
@@ -111,7 +105,7 @@ class Human_Player(Player):
     def __init__(self, name):
         super().__init__("Villager", name)
 
-    def vote(self, valid_targets):
+    def vote(self, valid_targets, game_manager=None):
         # Prompt user to select a valid target by name
         while True:
             target_name = input("Enter the name of the player to vote: ").strip().lower()
@@ -121,7 +115,7 @@ class Human_Player(Player):
             else:
                 print("Invalid name.")
     
-    def generate_argument(self, _alive_players, _last_deaths, _round_number, _last_protected, _last_investigated):
+    def generate_argument(self, _game_manager):
         print(f"{self.name}, it's your turn to speak.")
         argument = input("Type your argument: ")
         return argument
@@ -204,22 +198,28 @@ class AI_Player(Player):
 
             Your task is to update the suspicion scores based on the recent discussion.
             Each score should be:
-            -1.0 (completely innocent) to 1.0 (certainly Mafia)
+            -1.0 (completely innocent) to 1.0 (completely Mafia)
             If scores are already -1.0 or 1.0, do not change them.
             Do not remove any players from the suspicion scores, even if they are not mentioned in the discussion.
 
             Recent discussion:
             {history_str}
 
-            Alive players: {', '.join(p.name for p in alive_players)}
-
             Return as JSON like:
             {{ "Alice": 0.3, "Bob": -0.2 }}
             Do not include any other text or formatting.
             """
         new_suspicions = self.call_api(prompt)
+        new_suspicions = json.loads(new_suspicions)
+
+        for player_name, score in new_suspicions.items():
+            self.suspicions[player_name] = score
+        
+        if self.role == "Mafia":
+            for player in game_manager.players:
+                if player.role == "Mafia" and player != self:
+                    self.suspicions[player.name] = 1.0
         print(f"{self.name} updated suspicion scores: {new_suspicions}")
-        self.suspicions = json.loads(new_suspicions)
     
     def generate_argument(self, game_manager):
         alive = game_manager.get_alive_players()
@@ -259,39 +259,40 @@ class AI_Player(Player):
             Rules:
             - Night kills are always by Mafia (unless protected).
             - Doctors protect one person each night.
-            - Investigators learn one player’s alignment each night.
+            - Investigators each learn one player's role (mafia or not mafia) each night.
             - Day is for discussion and voting.
 
             Game State:
             Alive players: {players_list}
             Last night’s deaths: {deaths_list}
-            Suspicion scores: {self.suspicions}
+            Suspicion scores: {self.suspicions} (This is your suspicions of other players based on previous discussions and actions.)
             The current round is {game_manager.round_number}.
+            {f"IMPORTANT!! This discussion is about a revote because of a tie." if game_manager.revote else ""}
+            {f"The people in the revote are: {', '.join(p.name for p in game_manager.revote)}." if game_manager.revote else ""}
 
             Your recent role actions:
             {mem or '- None'}
-            There are {number_of_mafia} Mafia members remaining.
+            There are {number_of_mafia} Mafia members remaining. So, if that many people died last night, then all the mafia kills were successful.
 
             Current round discussion:
             {history_str}
 
             Instructions:
-            - Speak once per turn with a new, relevant 1-2 sentence comment.
-            - Do NOT repeat lines verbatim or recycle phrases.
+            - Do NOT repeat lines verbatim or recycle phrases. Do NOT just copy other players and say the same thing over and over again.
             - Do NOT refer to events that never happened.
-            - Do NOT claim kills or reveal Mafia actions.
-            - Do NOT mention AI, “the game,” or real-world topics.
+            - Do NOT mention AI, “the game,” real-world topics, or anything that happened outside of the game.
             - Do NOT speak in third person about yourself.
             - Do NOT mention anything previous interactions that never actually happened.
-            - Do NOT claim that you interacted with other players in any way that is not true or that you interacted with players during the night.
-            - Do not mourn the death or say anything like that because this is just a game.
+            - Do NOT mention seeing each other at night because that doesn't happen (mafia just votes to kill and so forth).
+            - Do NOT claim that you interacted with other players in any way that is not true or that you interacted with players during the night. You only interact during the discussion.
+            - Do NOT mourn the death or say anything like that because this is just a game.
             - Reason about the game state and your role and what you should be doing.
-            - {"Never reveal your kill or accuse fellow Mafia." if self.role == "Mafia" else ""}
+            - {"Do NOT reveal your kill or accuse fellow Mafia." if self.role == "Mafia" else ""}
             - {"You play the role of a Doctor, so you can protect one player each night. You are not a actual doctor saving lives. You just help prevent mafia from killing someone." if self.role == "Doctor" else ""}
-            - Do not use any special formatting like "Name: Argument", do not use quotes either.
-            - Just write your argument as a single paragraph without any formatting.
-            - Don't specifically say suspicion score, just say that you are suspicious of someone or that you trust someone.
-            - Do not say your inner thoughts outloud, say your argument as you are speaking to the other players.
+            - Do NOT use any special formatting like "Name: Argument", do not use quotes either.
+            - Just write your argument as a single paragraph without any formatting (couple of sentences).
+            - Do NOT say suspicion score; just say that you are suspicious of someone or that you trust someone.
+            - Do NOT say your inner thoughts outloud, say your argument as you are speaking to the other players.
 
             Now, based on the above, make a new in-character statement responding to the discussion and recent events.
             """
@@ -349,6 +350,7 @@ class Game_Manager:
         self.last_investigated = []
         self.last_targeted = []
         self.already_investigated = set()
+        self.revote = []
 
         self.use_model = use_model
         if use_model:
@@ -362,8 +364,15 @@ class Game_Manager:
 
     def get_alive_players(self):
         return [p for p in self.players if p.is_alive]
+    
+    def shuffle_roles(self):
+        roles = ["Villager"] * 5 + ["Mafia"] * 2 + ["Doctor"] + ["Investigator"] + ["Villager"]
+        random.shuffle(roles)
+        for player, role in zip(self.players, roles):
+            player.role = role
 
     def start_game(self):
+        self.shuffle_roles()
         print("Game started with players:")
         for player in self.players:
             print(f"- {player.name} as {player.role}")
@@ -451,8 +460,8 @@ class Game_Manager:
                     for t in eligible_targets:
                         if t.is_alive and t != doctor:
                             print(f"- {t.name}")
-                target = None
-                if self.use_model:
+                
+                if self.use_model or isinstance(doctor, Human_Player):
                     target = doctor.vote(eligible_targets, self)
                 else:
                     target = doctor.vote_doctor(eligible_targets)
@@ -461,8 +470,9 @@ class Game_Manager:
                 eligible_targets.remove(target)
                 self.last_protected.append((doctor, target))
 
-                desc = f"{doctor.name} protected {target.name}"
-                doctor.memory.write(desc)
+                if isinstance(doctor, AI_Player):
+                    desc = f"{doctor.name} protected {target.name}"
+                    doctor.memory.write(desc)
 
         # Mafia's turn
         mafia_players = [p for p in alive_players if p.role == "Mafia"]
@@ -475,8 +485,8 @@ class Game_Manager:
                     for t in eligible_targets:
                         if t != mafia:
                             print(f"- {t.name}")
-                target = None
-                if self.use_model:
+
+                if self.use_model or isinstance(mafia, Human_Player):
                     target = mafia.vote(eligible_targets, self)
                 else:
                     target = mafia.vote_mafia(eligible_targets)
@@ -488,9 +498,10 @@ class Game_Manager:
                 eligible_targets.remove(target)
                 self.last_targeted.append((mafia, target))
 
-                desc = f"{mafia.name} targeted {target.name} for elimination"
-                desc += " (killed)" if not target.is_alive else " (protected)"
-                mafia.memory.write(desc)
+                if isinstance(mafia, AI_Player):
+                    desc = f"{mafia.name} targeted {target.name} for elimination"
+                    desc += " (killed)" if not target.is_alive else " (was protected)"
+                    mafia.memory.write(desc)
 
         # Investigator's turn
         investigators = [p for p in alive_players if p.role == "Investigator"]
@@ -504,8 +515,7 @@ class Game_Manager:
                         if t.is_alive and t != investigator:
                             print(f"- {t.name}")
 
-                target = None
-                if self.use_model:
+                if self.use_model or isinstance(investigator, Human_Player):
                     target = investigator.vote(eligible_targets, self)
                 else:
                     target = investigator.vote_investigator(eligible_targets)
@@ -520,8 +530,9 @@ class Game_Manager:
                 self.last_investigated.append((investigator, target.name, target.role == "Mafia"))
                 self.already_investigated.add(target)
 
-                desc = f"{investigator.name} investigated {target.name}: {'Mafia' if target.role=='Mafia' else 'Innocent'}"
-                investigator.memory.write(desc)
+                if isinstance(investigator, AI_Player):
+                    desc = f"{investigator.name} investigated {target.name}: {'Mafia' if target.role=='Mafia' else 'Innocent'}"
+                    investigator.memory.write(desc)
 
         for p in protected:
             p.is_protected = False
@@ -541,12 +552,13 @@ class Game_Manager:
                 print(f"{player.name}: {argument.strip()}\n")
                 self.discussion_history[self.round_number].append((player.name, argument))
 
-                time.sleep(3)
+                time.sleep(6)
 
         print("End of discussion phase.")
 
     def voting_phase(self):
         print("\nVoting phase")
+        self.revote = []
         votes = {}
         alive = self.get_alive_players()
 
@@ -565,7 +577,6 @@ class Game_Manager:
                     target = player.vote_mafia(alive)
             else:
                 target = player.vote(alive, self)
-            print(f"{player.name} ({player.role}) votes for {target.name} ({target.role})")
 
             votes[target] = votes.get(target, 0) + 1
 
@@ -587,6 +598,7 @@ class Game_Manager:
             print("\nThere is a tie between:")
             for p in most_voted:
                 print(f"- {p.name}")
+            self.revote = most_voted
             print("\nAnother discussion begins (1 minute)...")
             self.discussion_phase(60)
 
@@ -606,7 +618,6 @@ class Game_Manager:
                         target = player.vote_mafia(alive)
                 else:
                     target = player.vote(alive, self)
-                print(f"{player.name} ({player.role}) votes for {target.name} ({target.role})")
 
                 revote[target] = revote.get(target, 0) + 1
 
@@ -678,7 +689,7 @@ class Game_Manager:
 if __name__ == "__main__":
     game_manager = Game_Manager(use_model=True)
 
-    game_manager.add_player(Human_Player("HumanPlayer"))
+    game_manager.add_player(Human_Player("Mike"))
     game_manager.add_player(AI_Player("Alice"))
     game_manager.add_player(AI_Player("Bob"))
     game_manager.add_player(AI_Player("Charlie"))
@@ -689,15 +700,5 @@ if __name__ == "__main__":
     game_manager.add_player(AI_Player("Hank"))
     game_manager.add_player(AI_Player("Ivy"))
 
-    game_manager.players[0].role = "Villager"
-    game_manager.players[1].role = "Villager"
-    game_manager.players[2].role = "Villager"
-    game_manager.players[3].role = "Villager"
-    game_manager.players[4].role = "Villager"
-    game_manager.players[5].role = "Mafia"
-    game_manager.players[6].role = "Mafia"
-    game_manager.players[7].role = "Doctor"
-    game_manager.players[8].role = "Investigator"
-    game_manager.players[9].role = "Villager"
 
     game_manager.start_game()
