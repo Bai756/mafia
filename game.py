@@ -10,14 +10,15 @@ class Game_Manager:
         self.players = []
         self.round_number = 1
         self.last_deaths = []
-        self.discussion_history = {1: [("System", "Start of game - round 1. Do not accuse anyone of being quiet or not participating as this just started.")]}
+        self.discussion_history = {1: [("System", "Start of game - round 1.")]}
         self.last_protected = []
         self.last_investigated = []
         self.last_targeted = []
         self.already_investigated = set()
         self.revote = []
-        self.is_night = False
+        self.is_night = True
         self.votes = {}
+        self.current_speaker = None
 
         self.use_model = use_model
         if use_model:
@@ -127,7 +128,30 @@ class Game_Manager:
     
     def get_game_status(self):
         return self.web_app_manager.get_game_status()
-
+    
+    def is_player_speaker(self, player):
+        return self.get_game_phase() == "day" and self.current_speaker == player.name
+    
+    def next_speaker(self):
+        alive_players = self.get_alive_players()
+        if not alive_players:
+            return
+            
+        # If no current speaker, start with first player
+        if not hasattr(self, 'current_speaker') or not self.current_speaker:
+            self.current_speaker = alive_players[0].name
+            return
+            
+        # Find current player index
+        current_idx = next((i for i, p in enumerate(alive_players) 
+                           if p.name == self.current_speaker), 0)
+                           
+        # Move to next player
+        next_idx = (current_idx + 1) % len(alive_players)
+        self.current_speaker = alive_players[next_idx].name
+    
+    def add_message(self, player_name, message):
+        return self.web_app_manager.add_message(player_name, message)
 
 if __name__ == "__main__":
     game_manager = Game_Manager(use_model=True)

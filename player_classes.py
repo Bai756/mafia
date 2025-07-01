@@ -22,8 +22,10 @@ class Human_Player(Player):
     def __init__(self, name):
         super().__init__("Villager", name)
 
-    def vote(self, valid_targets, game_manager=None):
+    def vote(self, game_manager, valid_targets=None):
         # Prompt user to select a valid target by name
+        if valid_targets is None:
+            valid_targets = [p for p in game_manager.get_alive_players() if p.is_alive and p != self]
         while True:
             target_name = input("Enter the name of the player to vote: ").strip().lower()
             target = next((p for p in valid_targets if p.name.lower() == target_name and p.is_alive and p != self), None)
@@ -44,35 +46,67 @@ class AI_Player(Player):
         self.suspicions = {} # Key values will be the name of another player
         self.memory = AgentMemory(max_size=100, embed_dim=32)
 
-    def vote(self, alive_targets, game_manager=None):
-        if not game_manager or not game_manager.use_model:
-            return self._vote_most_suspicious(alive_targets)
-        
+    def vote(self, game_manager, valid_targets=None):
+        if not game_manager.use_model:
+            # If not using model, use old voting logic
+            if game_manager.get_game_phase() == "night":
+                if self.role == "Mafia":
+                    if valid_targets is None:
+                        valid_targets = [p for p in game_manager.get_alive_players() if p != self and p.role != "Mafia"]
+                    return self._vote_mafia(valid_targets)
+                elif self.role == "Doctor":
+                    if valid_targets is None:
+                        valid_targets = [p for p in game_manager.get_alive_players() if p != self]
+                    return self._vote_doctor(valid_targets)
+                elif self.role == "Investigator":
+                    if valid_targets is None:
+                        valid_targets = [p for p in game_manager.get_alive_players() if p != self and p not in game_manager.already_investigated]
+                    if not valid_targets:
+                        valid_targets = [p for p in game_manager.get_alive_players() if p != self]
+                    return self._vote_investigator(valid_targets)
+            else:
+                if valid_targets is None:
+                    valid_targets = [p for p in game_manager.get_alive_players() if p != self]
+                if game_manager.revote:
+                    valid_targets = [p for p in valid_targets if p in game_manager.revote]
+
+                if self.role == "Mafia":
+                    return self._vote_mafia(valid_targets)
+                else:
+                    return self._vote_most_suspicious(valid_targets)
+
         obs = game_manager.get_observation(self)
         action = game_manager.model.get_action(obs, self.role)
         target = game_manager.players[action]
-        
-        valid_targets = [p for p in alive_targets if p != self]
 
-        if target not in valid_targets:
-            return self._vote_most_suspicious(alive_targets)
-        
+        if not valid_targets:
+            valid_target_idx = obs[-len(game_manager.players):]
+            if valid_target_idx[action] == 0:
+                valid_targets = [p for p in game_manager.get_alive_players() if p != self]
+                if self.role == "Mafia":
+                    valid_targets = [p for p in valid_targets if p.role != "Mafia"]
+                return self._vote_most_suspicious(valid_targets)
+        else:
+            valid_target_idx = [1 if p in valid_targets else 0 for p in game_manager.players]
+            if valid_target_idx[action] == 0:
+                return self._vote_most_suspicious(valid_targets)
+            
         return super().vote(target)
     
-    def vote_mafia(self, eligible_targets): # Mafia already have eligible targets filtered
+    def _vote_mafia(self, eligible_targets): # Mafia already have eligible targets filtered
         # Vote for the least suspicious alive target
         min_suspicion = min(self.suspicions.get(p.name, 0) for p in eligible_targets)
         least_suspicious = [p for p in eligible_targets if self.suspicions.get(p.name, 0) == min_suspicion]
         return super().vote(random.choice(least_suspicious))
     
-    def vote_doctor(self, alive_targets):
+    def _vote_doctor(self, alive_targets):
         # Vote for the least suspicious alive target to protect
         eligible_targets = [p for p in alive_targets if p != self]
         min_suspicion = min(self.suspicions.get(p.name, 0) for p in eligible_targets)
         least_suspicious = [p for p in eligible_targets if self.suspicions.get(p.name, 0) == min_suspicion]
         return super().vote(random.choice(least_suspicious))
 
-    def vote_investigator(self, alive_targets):
+    def _vote_investigator(self, alive_targets):
         # Vote for the most suspicious alive target not confirmed to be mafia to investigate
         eligible_targets = [p for p in alive_targets if p != self]
         eligible_targets = [p for p in eligible_targets if self.suspicions.get(p.name, 0) < 1.0]
@@ -215,6 +249,7 @@ class AI_Player(Player):
             - Just write your argument as a single paragraph without any formatting (couple of sentences).
             - Do NOT say suspicion score or score. Do NOT say low score or high score; just say that you are suspicious of someone or that you trust someone.
             - Do NOT say your inner thoughts outloud, say your argument as you are speaking to the other players.
+            - Do NOT accuse others of being quiet or not participating if the discussion just started.
 
             Now, based on the above, make a new in-character statement responding to the discussion and recent events.
             """

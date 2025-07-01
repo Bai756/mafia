@@ -18,7 +18,7 @@ class PhaseManager:
 
         # Doctor's turn
         doctors = [p for p in alive_players if p.role == "Doctor"]
-        eligible_targets = alive_players.copy()
+        eligible_targets = alive_players
         if doctors:
             for doctor in doctors:
                 print("\nDoctors can choose a player to protect.")
@@ -28,10 +28,7 @@ class PhaseManager:
                         if t.is_alive and t != doctor:
                             print(f"- {t.name}")
                 
-                if self.game.use_model or isinstance(doctor, Human_Player):
-                    target = doctor.vote(eligible_targets, self.game)
-                else:
-                    target = doctor.vote_doctor(eligible_targets)
+                target = doctor.vote(self.game, eligible_targets)
                 target.is_protected = True
                 protected.append(target)
                 eligible_targets.remove(target)
@@ -53,10 +50,7 @@ class PhaseManager:
                         if t != mafia:
                             print(f"- {t.name}")
 
-                if self.game.use_model or isinstance(mafia, Human_Player):
-                    target = mafia.vote(eligible_targets, self.game)
-                else:
-                    target = mafia.vote_mafia(eligible_targets)
+                target = mafia.vote(self.game, eligible_targets)
                 if not target.is_protected:
                     target.is_alive = False
                     death.append(target)
@@ -82,10 +76,7 @@ class PhaseManager:
                         if t.is_alive and t != investigator:
                             print(f"- {t.name}")
 
-                if self.game.use_model or isinstance(investigator, Human_Player):
-                    target = investigator.vote(eligible_targets, self.game)
-                else:
-                    target = investigator.vote_investigator(eligible_targets)
+                target = investigator.vote(self.game)
                 if target.role == "Mafia":
                     print(f"{investigator.name} discovers that {target.name} is a Mafia member.")
                 else:
@@ -131,24 +122,27 @@ class PhaseManager:
         self.voting_phase()
         
     def discussion_phase(self, time_limit):
-        from player_classes import AI_Player
         print(f"\nDiscussion phase begins. Players can discuss their suspicions and strategies for {time_limit} seconds.\n")
 
         start_time = time.time()
         alive_players = self.game.get_alive_players()
 
-        while time.time() - start_time < time_limit:
-            for player in alive_players:
-                argument = player.generate_argument(self.game)
-                print(f"{player.name}: {argument.strip()}\n")
-                self.game.discussion_history[self.game.round_number].append((player.name, argument))
+        self.game.current_speaker = None
+        self.game.next_speaker()
 
-                time.sleep(6)
+        while time.time() - start_time < time_limit:
+            player_name = self.game.current_speaker
+            player = next((p for p in alive_players if p.name == player_name), None)
+            argument = player.generate_argument(self.game)
+            print(f"{player.name}: {argument.strip()}\n")
+            self.game.discussion_history[self.game.round_number].append((player.name, argument))
+
+            time.sleep(6)
+            self.game.next_speaker()
 
         print("End of discussion phase.")
 
     def voting_phase(self):
-        from player_classes import AI_Player, Human_Player
         print("\nVoting phase")
         self.game.revote = []
         votes = {}
@@ -163,12 +157,9 @@ class PhaseManager:
                         print(f"- {t.name}")
 
             if player.role == "Mafia":
-                if self.game.use_model:
-                    target = player.vote(alive, self.game)
-                else:
-                    target = player.vote_mafia(alive)
+                target = player.vote(self.game)
             else:
-                target = player.vote(alive, self.game)
+                target = player.vote(self.game)
 
             votes[target] = votes.get(target, 0) + 1
 
@@ -203,13 +194,7 @@ class PhaseManager:
                         if t != player:
                             print(f"- {t.name}")
 
-                if player.role == "Mafia":
-                    if self.game.use_model:
-                        target = player.vote(alive, self.game)
-                    else:
-                        target = player.vote_mafia(alive)
-                else:
-                    target = player.vote(alive, self.game)
+                target = player.vote(self.game)
 
                 revote[target] = revote.get(target, 0) + 1
 

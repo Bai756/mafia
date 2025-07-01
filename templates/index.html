@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mafia Game</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Mafia Game</h1>
+            <p>A deception game</p>
+        </header>
+        
+        <main class="form-container">
+            <div class="card">
+                <h2>Join The Game</h2>
+                
+                <form onsubmit="return false;">
+                    <div class="form-group">
+                        <label for="playerName">Your Name</label>
+                        <input type="text" id="playerName" placeholder="Enter your name">
+                    </div>
+                    
+                    <div class="button-group">
+                        <button id="createRoomBtn" class="btn-primary btn">Create Room</button>
+                        <p class="separator">or</p>
+                        <div class="form-group">
+                            <label for="roomId">Room ID</label>
+                            <input type="text" id="roomId" placeholder="Enter room ID">
+                        </div>
+                        <button id="joinRoomBtn" class="btn">Join Room</button>
+                    </div>
+                </form>
+                
+                <div id="errorMessage" class="error-message"></div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
