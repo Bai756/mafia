@@ -22,11 +22,7 @@ logger = logging.getLogger('uvicorn.error')
 logger.setLevel(logging.DEBUG)
 
 # TODO:
-# Fix ownership issues (e.g. owner can leave and rejoin, but not change ownership, and when a player joins ownership is gone)
-# Make each page unique for each player (e.g. player name at the top and during game, show unique role options to each player)
-
-# Fix game discussion not working on website
-# Fix gameloop in general
+# Fix game play
 
 rooms = {}
 room_timers = {}
@@ -57,12 +53,26 @@ async def get_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/lobby", response_class=HTMLResponse)
-async def get_lobby(request: Request):
-    return templates.TemplateResponse("lobby.html", {"request": request})
+async def get_lobby(request: Request, roomId: str = None, name: str = None):
+    return templates.TemplateResponse(
+        "lobby.html",
+        {
+            "request": request,
+            "ROOM_ID": roomId,
+            "PLAYER_NAME": name,
+        },
+    )
 
 @app.get("/game", response_class=HTMLResponse)
-async def get_game(request: Request):
-    return templates.TemplateResponse("game.html", {"request": request})
+async def get_game(request: Request, roomId: str = None, name: str = None):
+    return templates.TemplateResponse(
+        "game.html",
+        {
+            "request": request,
+            "ROOM_ID": roomId,
+            "PLAYER_NAME": name,
+        },
+    )
 
 # API endpoints
 @app.post("/room")
@@ -352,20 +362,6 @@ async def lobby_websocket_endpoint(websocket: WebSocket, room_id: str, player_na
     except WebSocketDisconnect:
         if 'lobby_clients' in room and player_name in room['lobby_clients']:
             del room['lobby_clients'][player_name]
-        game = room['game']
-        game.players = [p for p in game.players if p.name != player_name]
-
-        # If the owner disconnects, transfer ownership to another player
-        if player_name == room.get('owner'):
-            for p in game.players:
-                if not isinstance(p, AI_Player):
-                    room['owner'] = p.name
-                    # Broadcast ownership change
-                    await broadcast_lobby_update(room_id, {
-                        "type": "owner_changed",
-                        "owner": p.name
-                    })
-                    break
 
         check_and_schedule_cleanup(room_id)
 

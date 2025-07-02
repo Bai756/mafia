@@ -401,16 +401,6 @@ input {
     background-color: #e0f7fa;
 }
 
-.owner-badge {
-    background-color: #4caf50;
-    color: white;
-    padding: 8px 12px;
-    border-radius: 4px;
-    margin-bottom: 15px;
-    text-align: center;
-    font-weight: bold;
-}
-
 .owner-controls {
     margin-top: 20px;
     padding-top: 15px;

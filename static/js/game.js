@@ -1,17 +1,17 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Game state
+    // Initialize game state
     const state = {
         socket: null,
         pingInterval: null,
-        playerName: localStorage.getItem('playerName'),
+        playerName: window.PLAYER_NAME || localStorage.getItem('playerName'),
         playerRole: null,
         isAlive: true,
-        roomId: localStorage.getItem('roomId'),
+        roomId: window.ROOM_ID || localStorage.getItem('roomId'),
         gamePhase: null,
-        roundNumber: 0,
+        roundNumber: 1,
         isGameOver: false
     };
-    
+
     // Header elements
     const headerElements = {
         playerNameDisplay: document.getElementById('headerPlayerName'),
@@ -48,9 +48,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Phase sections
     const phaseElements = {
         daySection: document.getElementById('daySection'),
-        nightSection: document.getElementById('nightSection')
+        nightSection: document.getElementById('nightSection'),
+        lastDeaths: document.getElementById('lastDeaths')
     };
-
+    
     // Initialize game
     initGame();
     
@@ -83,14 +84,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update header with role information
                 updateRoleInfo(playerData.role, playerData.is_alive);
                 
-                // Set role badge in game UI
-                updateRoleBadge(playerData.role);
-                
-                // Store investigation results if any
-                if (playerData.investigation_results && playerData.investigation_results.length > 0) {
-                    localStorage.setItem('investigationResults', JSON.stringify(playerData.investigation_results));
-                }
-                
                 // Connect to game WebSocket
                 connectGameSocket();
                 
@@ -103,91 +96,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 window.location.href = '/';
             });
     }
-    
-    function updatePlayerInfoHeader() {
-        if (headerElements.playerNameDisplay) {
-            headerElements.playerNameDisplay.textContent = state.playerName || 'Anonymous';
-        }
-    }
-    
-    function updateRoleInfo(role, isAlive) {
-        if (headerElements.playerRoleInfo && headerElements.playerRoleDisplay) {
-            headerElements.playerRoleInfo.classList.remove('hidden');
-            
-            // Remove any existing role classes
-            headerElements.playerRoleInfo.classList.remove('role-mafia', 'role-doctor', 'role-investigator', 'role-villager');
-            
-            // Add role-specific class
-            headerElements.playerRoleInfo.classList.add(`role-${role.toLowerCase()}`);
-            
-            // Update role text
-            headerElements.playerRoleDisplay.textContent = role + (isAlive ? '' : ' (Dead)');
-            
-            // Add dead indicator if player is dead
-            if (!isAlive) {
-                headerElements.playerRoleDisplay.classList.add('dead');
-            } else {
-                headerElements.playerRoleDisplay.classList.remove('dead');
-            }
-        }
-    }
-    
-    function updateRoleBadge(role) {
-        if (statusElements.roleDisplay) {
-            statusElements.roleDisplay.textContent = role;
-            
-            // Apply role-specific styling
-            switch(role) {
-                case 'Mafia':
-                    statusElements.roleDisplay.style.backgroundColor = '#8b0000';
-                    break;
-                case 'Doctor':
-                    statusElements.roleDisplay.style.backgroundColor = '#00796b';
-                    break;
-                case 'Investigator':
-                    statusElements.roleDisplay.style.backgroundColor = '#0d47a1';
-                    break;
-                default:
-                    statusElements.roleDisplay.style.backgroundColor = '#555';
-            }
-        }
-    }
-    
-    // Initialize message input handlers
-    function initMessageInput() {
-        // Add character counter functionality
-        if (discussionElements.messageInput && discussionElements.charCounter) {
-            discussionElements.messageInput.addEventListener('input', handleMessageInput);
-        }
-        
-        // Add send message functionality
-        if (discussionElements.sendMessageBtn && discussionElements.messageInput) {
-            discussionElements.sendMessageBtn.addEventListener('click', sendMessage);
-            discussionElements.messageInput.addEventListener('keydown', handleMessageKeydown);
-        }
-    }
-    
-    function handleMessageInput() {
-        const length = discussionElements.messageInput.value.length;
-        discussionElements.charCounter.textContent = `${length}/200`;
-        
-        if (length > 180) {
-            discussionElements.charCounter.style.color = '#f44336';
-        } else {
-            discussionElements.charCounter.style.color = '';
-        }
-    }
-    
-    function handleMessageKeydown(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    }
-
-    // -----------------------------------------------------
-    // API Communication
-    // -----------------------------------------------------
     
     // Authenticate player and get role
     async function authenticatePlayer() {
@@ -213,8 +121,62 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    function updatePlayerInfoHeader() {
+        if (headerElements.playerNameDisplay) {
+            headerElements.playerNameDisplay.textContent = state.playerName || 'Anonymous';
+        }
+    }
+    
+    function updateRoleInfo(role, isAlive) {
+        if (!headerElements.playerRoleInfo || !headerElements.playerRoleDisplay) {
+            return;
+        }
+        
+        headerElements.playerRoleInfo.classList.remove('hidden');
+        
+        // Remove any existing role classes
+        headerElements.playerRoleInfo.classList.remove(
+            'role-mafia', 'role-doctor', 'role-investigator', 'role-villager'
+        );
+        
+        // Add role-specific class
+        headerElements.playerRoleInfo.classList.add(`role-${role.toLowerCase()}`);
+        
+        // Update role text
+        headerElements.playerRoleDisplay.textContent = role + (isAlive ? '' : ' (Dead)');
+        
+        // Add dead indicator if player is dead
+        if (!isAlive) {
+            headerElements.playerRoleDisplay.classList.add('dead');
+        } else {
+            headerElements.playerRoleDisplay.classList.remove('dead');
+        }
+        
+        // Update role display if available
+        if (statusElements.roleDisplay) {
+            statusElements.roleDisplay.textContent = role;
+            
+            // Apply role-specific styling
+            switch(role) {
+                case 'Mafia':
+                    statusElements.roleDisplay.style.backgroundColor = '#8b0000';
+                    break;
+                case 'Doctor':
+                    statusElements.roleDisplay.style.backgroundColor = '#00796b';
+                    break;
+                case 'Investigator':
+                    statusElements.roleDisplay.style.backgroundColor = '#0d47a1';
+                    break;
+                default:
+                    statusElements.roleDisplay.style.backgroundColor = '#555';
+            }
+        }
+    }
+    
+    // -----------------------------------------------------
     // WebSocket Connection
-
+    // -----------------------------------------------------
+    
     function connectGameSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/${state.roomId}/${state.playerName}`;
@@ -239,15 +201,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function handleSocketMessage(event) {
-        const gameState = JSON.parse(event.data);
-        
-        // Update game state
-        state.gamePhase = gameState.phase;
-        state.roundNumber = gameState.round;
-        state.isGameOver = gameState.game_status && gameState.game_status.is_over;
-        
-        // Update UI
-        updateGameDisplay(gameState);
+        try {
+            const gameState = JSON.parse(event.data);
+            
+            // Update game state
+            state.gamePhase = gameState.phase;
+            state.roundNumber = gameState.round;
+            state.isGameOver = gameState.game_status && gameStatus.game_status.is_over;
+            
+            // Update UI
+            updateGameDisplay(gameState);
+        } catch (error) {
+            console.error('Error processing message:', error);
+        }
     }
     
     function handleSocketClose() {
@@ -321,6 +287,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         playerElements.playersList.innerHTML = '';
         playerElements.actionsDiv.innerHTML = '';
+        
+        if (!alivePlayers || !alivePlayers.length) return;
         
         // Sort players: current player first, then others
         const sortedPlayers = [...alivePlayers].sort((a, b) => {
@@ -449,16 +417,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateLastDeaths(lastDeaths) {
-        if (!lastDeaths || lastDeaths.length === 0) return;
+        if (!lastDeaths || lastDeaths.length === 0 || !phaseElements.lastDeaths) {
+            return;
+        }
         
-        const deathsDiv = document.getElementById('lastDeaths');
-        if (!deathsDiv) return;
-        
-        deathsDiv.innerHTML = '';
+        phaseElements.lastDeaths.innerHTML = '';
         
         const heading = document.createElement('h4');
         heading.textContent = 'Recent Deaths:';
-        deathsDiv.appendChild(heading);
+        phaseElements.lastDeaths.appendChild(heading);
         
         const list = document.createElement('ul');
         lastDeaths.forEach(player => {
@@ -470,7 +437,7 @@ document.addEventListener('DOMContentLoaded', function() {
             list.appendChild(li);
         });
         
-        deathsDiv.appendChild(list);
+        phaseElements.lastDeaths.appendChild(list);
     }
     
     function updateActionArea(phase) {
@@ -588,9 +555,40 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // -----------------------------------------------------
-    // Actions
-    // -----------------------------------------------------
+    // Message Input Handling
+    
+    function initMessageInput() {
+        // Add character counter functionality
+        if (discussionElements.messageInput && discussionElements.charCounter) {
+            discussionElements.messageInput.addEventListener('input', handleMessageInput);
+        }
+        
+        // Add send message functionality
+        if (discussionElements.sendMessageBtn && discussionElements.messageInput) {
+            discussionElements.sendMessageBtn.addEventListener('click', sendMessage);
+            discussionElements.messageInput.addEventListener('keydown', handleMessageKeydown);
+        }
+    }
+    
+    function handleMessageInput() {
+        const length = discussionElements.messageInput.value.length;
+        discussionElements.charCounter.textContent = `${length}/200`;
+        
+        if (length > 180) {
+            discussionElements.charCounter.style.color = '#f44336';
+        } else {
+            discussionElements.charCounter.style.color = '';
+        }
+    }
+    
+    function handleMessageKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+    
+    // Game Actions
     
     function sendAction(action, target) {
         if (!state.socket || state.socket.readyState !== WebSocket.OPEN) return;
@@ -623,44 +621,7 @@ document.addEventListener('DOMContentLoaded', function() {
         discussionElements.messageInput.value = '';
         if (discussionElements.charCounter) {
             discussionElements.charCounter.textContent = '0/200';
-        }
-        
-        // Disable input until next turn
-        discussionElements.chatInputArea.classList.add('chat-input-disabled');
-        discussionElements.messageInput.disabled = true;
-        discussionElements.sendMessageBtn.disabled = true;
-    }
-    
-    function disableActionButtons() {
-        const buttons = document.querySelectorAll('.action-btn');
-        buttons.forEach(btn => {
-            btn.disabled = true;
-            btn.classList.add('action-selected');
-        });
-    }
-    
-    // Utility Functions
-
-    function getNightInstructions() {
-        switch (state.playerRole) {
-            case 'Mafia':
-                return 'Choose a player to eliminate.';
-            case 'Doctor':
-                return 'Choose a player to protect tonight.';
-            case 'Investigator':
-                return 'Choose a player to investigate.';
-            default:
-                return 'You have no action during the night phase.';
-        }
-    }
-    
-    function cleanupResources() {
-        if (state.socket) {
-            state.socket.close();
-        }
-        
-        if (state.pingInterval) {
-            clearInterval(state.pingInterval);
+            discussionElements.charCounter.style.color = '';
         }
     }
 });
