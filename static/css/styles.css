@@ -11,6 +11,20 @@
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     --rounded: 8px;
     --transition: all 0.3s ease;
+
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 12px;
+    --space-lg: 20px;
+    --space-xl: 32px;
+
+    --color-mafia: #ff5555;
+    --color-doctor: #50fa7b;
+    --color-investigator: #1976d2;
+    --color-villager: #f8f8f2;
+    
+    --bg-light-panel: #f9f9f9;
+    --bg-dark-panel: #1e2642;
 }
 
 * {
@@ -24,31 +38,40 @@ body {
     line-height: 1.6;
     color: var(--color-text);
     background-color: var(--color-background);
+    padding-bottom: 0;
+    margin: 0;
+    overflow-y: auto;
+    height: 100%;
+    min-height: 100vh;
 }
 
 .container {
     width: 100%;
     max-width: 1200px;
     margin: 0 auto;
-    padding: 20px;
+    padding: var(--space-sm);
 }
 
 .card {
     background-color: var(--color-card);
     border-radius: var(--rounded);
-    padding: 20px;
+    padding: var(--space-md);
     box-shadow: var(--shadow);
-    margin-bottom: 20px;
+    margin-bottom: var(--space-md);
+}
+
+.card > *:not(:last-child) {
+    margin-bottom: var(--space-sm);
 }
 
 header {
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: var(--space-md);
 }
 
 header h1 {
     font-size: 2.5rem;
-    margin-bottom: 10px;
+    margin-bottom: var(--space-sm);
     color: var(--color-primary);
 }
 
@@ -58,18 +81,18 @@ header h1 {
 }
 
 .form-group {
-    margin-bottom: 20px;
+    margin-bottom: var(--space-lg);
 }
 
 label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-xs);
     font-weight: 500;
 }
 
 input {
     width: 100%;
-    padding: 12px;
+    padding: var(--space-sm);
     border: 1px solid var(--color-border);
     border-radius: var(--rounded);
     font-size: 1rem;
@@ -78,7 +101,7 @@ input {
 .button-group {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: var(--space-sm);
 }
 
 .separator {
@@ -88,7 +111,7 @@ input {
 }
 
 .btn {
-    padding: 12px 20px;
+    padding: var(--space-sm) var(--space-md);
     border: none;
     border-radius: var(--rounded);
     font-size: 1rem;
@@ -113,18 +136,20 @@ input {
 
 .error-message {
     color: var(--color-error);
-    margin-top: 15px;
+    margin-top: var(--space-sm);
     font-size: 0.9rem;
 }
 
 .players-list {
     list-style-type: none;
-    margin: 5px 0;
 }
 
 .players-list li {
-    padding: 10px;
-    border-bottom: 1px solid var(--color-border);
+    border-radius: var(--rounded);
+}
+
+.players-list li:hover {
+    background-color: #e0f7fa;
 }
 
 .highlight {
@@ -135,117 +160,363 @@ input {
 }
 
 .game-container {
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    min-height: 100vh;
+    max-height: none;
+    overflow-y: auto;
+    padding-top: 10px;
 }
 
 .game-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 15px;
-    margin-bottom: 20px;
+    flex-direction: column;
+    height: auto;
+    border-bottom: none;
+    grid-row: 2;
+    margin-top: 10px;
+    position: relative;
+    z-index: 5;
+    padding-bottom: 0;
+}
+
+/* Game title styling */
+.game-title {
+    font-size: 1.3rem;
+    color: var(--color-primary);
+    font-weight: 600;
+    margin-bottom: var(--space-xs);
 }
 
 .stats {
     display: flex;
-    gap: 20px;
-    font-size: 0.9rem;
-    margin-top: 5px;
+    gap: var(--space-md);
+    font-size: 1.0rem;
+    margin-bottom: var(--space-xs);
+    position: relative;
+    z-index: 10;
+    font-weight: bold;
 }
 
-.role-badge {
-    display: inline-block;
-    padding: 5px 15px;
-    background-color: var(--color-secondary);
-    color: white;
-    border-radius: 20px;
-    font-weight: 500;
+.game-header::after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 1px;
+    background-color: var(--color-border);
+    margin-top: var(--space-xs);
+    margin-bottom: var(--space-sm);
 }
 
 .game-main {
-    flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
+    padding-bottom: var(--space-lg);
+    grid-row: 3;
+    height: 100%;
 }
 
 .game-grid {
     display: grid;
     grid-template-columns: 300px 1fr;
-    gap: 20px;
-    height: calc(100% - 50px);
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+    min-height: 500px;
+    align-items: stretch;
+    overflow: visible;
+    height: auto;
+}
+
+.players-panel, .action-panel, .discussion-panel, .information-panel {
+    background-color: var(--color-card);
+    border-radius: var(--rounded);
+    padding: var(--space-md);
+    box-shadow: var(--shadow);
 }
 
 .players-panel {
-    background-color: var(--color-card);
-    border-radius: var(--rounded);
-    padding: 15px;
-    box-shadow: var(--shadow);
+    background-color: var(--bg-light-panel);
     overflow-y: auto;
+    height: 100%;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-sm);
+}
+
+.players-panel h2 {
+    margin-bottom: var(--space-sm);
+    padding-bottom: var(--space-xs);
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.players-panel .player-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+}
+
+.player-item {
+    display: block;
+    padding: 0;
+    margin-bottom: 1px;
+    border-radius: 0;
+    width: 100%;
+}
+
+.player-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-sm);
+    margin-bottom: 0;
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 0;
+    transition: background-color 0.2s;
+    border-left: 3px solid transparent;
+    border-right: 0;
+    border-top: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    background-color: rgba(255, 255, 255, 0.4);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.player-item:not(:last-child) {
+    border-bottom: none;
+}
+
+.current-player {
+    font-weight: bold;
+    border-left: 3px solid #2196f3;
+    background-color: rgba(33, 150, 243, 0.05) !important;
+}
+
+.human-player {
+    border-left: 3px solid var(--color-success);
+}
+
+.ai-player {
+    border-left: 3px solid #9c27b0;
+}
+
+.current-speaker {
+    border-left: 4px solid var(--color-primary) !important;
+    background-color: rgba(139, 0, 0, 0.05) !important;
+}
+
+.player-item:not(:last-child) {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.night-mode .player-item:not(:last-child) {
+    border-bottom-color: rgba(255, 255, 255, 0.03);
+}
+
+.action-panel h2 {
+    color: var(--color-secondary);
+    font-size: 1.4rem;
+}
+
+.information-panel h2 {
+    color: var(--color-primary);
 }
 
 .game-content {
     display: flex;
     flex-direction: column;
-    gap: 20px;
     height: 100%;
+    justify-content: space-between;
 }
 
 .discussion-panel {
-    background-color: var(--color-card);
-    border-radius: var(--rounded);
-    padding: 15px;
-    box-shadow: var(--shadow);
     flex: 1;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    order: 1;
+    min-height: 0;
+    padding: var(--space-sm);
+}
+
+.discussion-panel h2 {
+    margin-bottom: var(--space-sm);
+    padding-bottom: var(--space-xs);
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--color-border);
 }
 
 .discussion-feed {
     flex: 1;
     overflow-y: auto;
-    padding: 10px;
-    background-color: #f9f9f9;
-    border-radius: 4px;
-    margin-top: 10px;
+    padding: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    margin-top: var(--space-sm);
+    background-color: var(--bg-light-panel);
+    border-radius: var(--rounded);
+    max-height: none;
+    min-height: 0;
 }
 
 .action-panel {
-    background-color: var(--color-card);
-    border-radius: var(--rounded);
-    padding: 15px;
-    box-shadow: var(--shadow);
-    height: 150px;
+    order: 2;
+    height: auto;
+    margin-bottom: 0;
+    margin-top: var(--space-md);
+    padding: var(--space-sm);
 }
 
-.game-players {
+.action-panel.compact h3 {
+    font-size: 1.1rem;
+    color: var(--color-secondary);
+    margin-bottom: var(--space-sm);
+    padding-bottom: var(--space-xs);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.action-area {
+    padding: var(--space-sm);
+    background-color: var(--bg-light-panel);
+    border-radius: var(--rounded);
+    margin-top: var(--space-xs);
+    font-size: 0.9rem;
+}
+
+.info-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+
+.deaths-container, .investigation-container {
+    flex: 1;
+    min-width: 250px;
+    padding: var(--space-sm);
+    border-radius: var(--rounded);
     margin: 0;
 }
 
+.deaths-container h3, .investigation-container h3 {
+    font-size: 1rem;
+    margin-bottom: var(--space-sm);
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.night-mode .action-panel.compact h3 {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
 .game-status {
-    margin-top: 20px;
     text-align: center;
     font-weight: 500;
-    height: 30px;
+    grid-row: 4;
+    padding: var(--space-xs) 0;
 }
 
 .player-item {
+    display: block;
+    padding: 0;
+    margin-bottom: 1px;
+    border-radius: 0;
+    width: 100%;
+}
+
+.player-info-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #f9f9f9;
-    padding: 8px 12px;
-    border-radius: 4px;
-    margin-bottom: 8px;
+    padding: var(--space-sm);
+    margin-bottom: 0;
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 0;
+    transition: background-color 0.2s;
+    border-left: 3px solid transparent;
+    border-right: 0;
+    border-top: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    background-color: rgba(255, 255, 255, 0.4);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.player-info-row:hover {
+    background-color: rgba(255, 255, 255, 0.7);
+    border-color: rgba(0, 0, 0, 0.08);
 }
 
 .player-actions {
     display: flex;
-    gap: 5px;
+    gap: var(--space-xs);
+}
+
+.current-player {
+    font-weight: bold;
+    background-color: rgba(76, 175, 80, 0.1);
+    border-left: 3px solid #2196f3;
+    border-top-right-radius: var(--rounded);
+    border-bottom-right-radius: var(--rounded);
+}
+
+.human-player {
+    border-left: 3px solid var(--color-success);
+}
+
+.ai-player {
+    color: var(--color-text-light);
+    border-left: 3px solid #9c27b0;
+}
+
+.ai-player::before {
+    content: "🤖";
+    margin-right: var(--space-xs);
+}
+
+.human-player::before {
+    content: "👤";
+    margin-right: var(--space-xs);
+}
+
+.current-speaker {
+    border-left: 4px solid var(--color-primary) !important;
+    background-color: rgba(139, 0, 0, 0.05);
+}
+
+.player-name {
+    flex-grow: 1;
+}
+
+.room-owner {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-decoration-color: var(--color-success);
+    position: relative;
+}
+
+.room-owner::after {
+    content: "Owner";
+    position: absolute;
+    background-color: var(--color-success);
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    left: 100%;
+    margin-left: var(--space-xs);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.room-owner:hover::after {
+    opacity: 1;
 }
 
 .night-mode {
@@ -256,67 +527,62 @@ input {
     --color-text-light: #a0a0a0;
 }
 
+.night-mode .players-panel,
+.night-mode .action-area,
 .night-mode .discussion-feed {
-    background-color: #14192d;
+    background-color: var(--bg-dark-panel);
 }
 
 .night-mode .player-item {
-    background-color: #1e2642;
+    background-color: var(--bg-dark-panel);
+}
+
+.night-mode .player-info-row {
+    background-color: rgba(30, 38, 66, 0.7);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+.night-mode .player-info-row:hover {
+    background-color: rgba(37, 48, 80, 0.8);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.night-mode .players-panel h2 {
+    color: var(--color-text);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .message {
-    margin-bottom: 10px;
-    padding: 10px;
-    border-radius: 4px;
+    margin-bottom: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
 }
 
 .message .sender {
     font-weight: bold;
-    margin-right: 5px;
+    margin-right: var(--space-xs);
     color: var(--color-secondary);
 }
 
-@media (max-width: 768px) {
-    .game-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .players-panel {
-        height: 200px;
-    }
-}
-
-.copied {
-    background-color: #4caf50 !important;
-    color: white !important;
-}
-
-.copy-error {
-    background-color: #f44336 !important;
-    color: white !important;
-}
-
 .chat-input-area {
-    margin-top: 15px;
-    border-top: 1px solid var(--color-border);
-    padding-top: 15px;
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
 }
 
 .message-input {
     width: 100%;
-    padding: 10px;
+    padding: var(--space-xs);
+    height: 100px;
+    margin-bottom: var(--space-xs);
     border: 1px solid var(--color-border);
     border-radius: var(--rounded);
     resize: none;
-    height: 80px;
     font-family: inherit;
-    margin-bottom: 10px;
-    background-color: #fff;
+    background-color: white;
 }
 
 .night-mode .message-input {
-    background-color: #1e2642;
-    color: #fff;
+    background-color: var(--bg-dark-panel);
+    color: white;
     border-color: #444;
 }
 
@@ -338,10 +604,10 @@ input {
 
 .your-turn {
     background-color: rgba(76, 175, 80, 0.1);
-    border: 1px solid #4caf50;
+    border: 1px solid var(--color-success);
     border-radius: var(--rounded);
-    padding: 10px;
-    margin-bottom: 10px;
+    padding: var(--space-xs);
+    margin-bottom: var(--space-xs);
     font-weight: 500;
     color: #2e7d32;
 }
@@ -351,134 +617,23 @@ input {
     color: #81c784;
 }
 
-.current-speaker {
-    border-left: 4px solid var(--color-primary) !important;
-    background-color: rgba(139, 0, 0, 0.05);
-}
-
-.speaker-indicator {
-    background-color: #f8f9fa;
-    padding: 5px 10px;
-    border-radius: var(--rounded);
-    font-size: 0.9rem;
-    margin-top: 5px;
-    animation: pulse 2s infinite;
-}
-
-.night-mode .speaker-indicator {
-    background-color: #1e2642;
-}
-
-@keyframes pulse {
-    0% { opacity: 0.7; }
-    50% { opacity: 1; }
-    100% { opacity: 0.7; }
-}
-
-.current-player {
-    font-weight: bold;
-    background-color: rgba(76, 175, 80, 0.1);
-    border-left: 3px solid #2196f3;
-}
-
-.human-player {
-    border-left: 3px solid #4caf50;
-}
-
-.ai-player {
-    color: #777;
-    border-left: 3px solid #9c27b0;
-}
-
-.players-list li {
-    padding: 8px 12px;
-    margin-bottom: 4px;
-    border-radius: 4px;
-    background-color: #f9f9f9;
-}
-
-.players-list li:hover {
-    background-color: #e0f7fa;
-}
-
-.owner-controls {
-    margin-top: 20px;
-    padding-top: 15px;
-    border-top: 1px solid #eee;
-    text-align: center;
-}
-
-.remove-btn {
-    background-color: #f44336;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 4px 8px;
-    margin-left: 10px;
-    cursor: pointer;
-    font-size: 0.8rem;
-}
-
-.remove-btn:hover {
-    background-color: #d32f2f;
-}
-
-.ai-player::before {
-    content: "🤖";
-    margin-right: 5px;
-}
-
-.human-player::before {
-    content: "👤";
-    margin-right: 5px;
-}
-
-.current-player {
-    font-weight: bold;
-}
-
-.room-owner {
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-    text-decoration-color: #4caf50;
-    position: relative;
-}
-
-.room-owner::after {
-    content: "Owner";
-    position: absolute;
-    background-color: #4caf50;
-    color: white;
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 3px;
-    left: 100%;
-    margin-left: 8px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    white-space: nowrap;
-}
-
-.room-owner:hover::after {
-    opacity: 1;
-}
-
 .player-info-header {
     background-color: #1a1a2e;
     color: white;
-    padding: 10px 15px;
+    padding: var(--space-sm);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    border-radius: var(--rounded);
+    border-radius: 0;
+    grid-row: 1;
+    margin: 0;
+    max-height: 50px;
 }
 
 .player-name-display, .player-role-info {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-xs);
 }
 
 .player-info-header .label {
@@ -492,21 +647,386 @@ input {
 }
 
 .role-mafia .value {
-    color: #ff5555;
+    color: var(--color-mafia);
 }
 
 .role-doctor .value {
-    color: #50fa7b;
+    color: var(--color-doctor);
 }
 
 .role-investigator .value {
-    color: #8be9fd;
+    color: var(--color-investigator);
 }
 
 .role-villager .value {
-    color: #f8f8f2;
+    color: var(--color-villager);
+}
+
+.players-list .player-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+    width: 100%;
+    background-color: var(--color-card);
+}
+
+.players-list .player-item:last-child {
+    border-bottom: none;
+}
+
+.players-list .player-name {
+    flex-grow: 1;
+}
+
+.remove-btn {
+    margin-left: auto;
+    background-color: var(--color-error);
+    color: white;
+    border: none;
+    border-radius: var(--rounded);
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    min-width: 70px;
+    text-align: center;
+}
+
+.night-mode .players-list .player-item {
+    border-bottom-color: var(--color-border);
+}
+
+.players-list .player-item:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.night-mode .players-list .player-item:hover {
+    background-color: rgba(255, 255, 255, 0.02);
 }
 
 .hidden {
     display: none !important;
+}
+
+.copied {
+    background-color: var(--color-success) !important;
+    color: white !important;
+}
+
+.copy-error {
+    background-color: var(--color-error) !important;
+    color: white !important;
+}
+
+.speaker-indicator {
+    background-color: var(--bg-light-panel);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--rounded);
+    font-size: 0.9rem;
+    margin-top: var(--space-xs);
+    animation: pulse 2s infinite;
+}
+
+.night-mode .speaker-indicator {
+    background-color: var(--bg-dark-panel);
+}
+
+@keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+}
+
+.owner-controls {
+    margin-top: var(--space-md);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--color-border);
+    text-align: center;
+}
+
+.remove-btn {
+    background-color: var(--color-error);
+    color: white;
+    border: none;
+    border-radius: var(--rounded);
+    padding: 4px 8px;
+    margin-left: var(--space-sm);
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.remove-btn:hover {
+    background-color: #d32f2f;
+}
+
+.action-btn {
+    margin-left: 4px;
+    padding: 3px 6px;
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+}
+
+.night_kill-btn {
+    background-color: #d32f2f;
+    border: 1px solid #b71c1c;
+}
+
+.night_kill-btn:hover {
+    background-color: #b71c1c;
+    transform: translateY(-1px);
+}
+
+.night_protect-btn {
+    background-color: #388e3c;
+    border: 1px solid #2e7d32;
+}
+
+.night_protect-btn:hover {
+    background-color: #2e7d32;
+    transform: translateY(-1px);
+}
+
+.night_investigate-btn {
+    background-color: #1976d2;
+    border: 1px solid #0d47a1;
+}
+
+.night_investigate-btn:hover {
+    background-color: #0d47a1;
+    transform: translateY(-1px);
+}
+
+.vote-btn {
+    background-color: #7b1fa2;
+    border: 1px solid #6a1b9a;
+}
+
+.vote-btn:hover {
+    background-color: #6a1b9a;
+    transform: translateY(-1px);
+}
+
+.action-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.action-btn.action-selected {
+    background-color: #78909c;
+    border-color: #546e7a;
+    color: #e0e0e0;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+.night-mode .action-btn {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    color: #90a4ae;
+}
+
+.night-mode .action-btn.action-selected {
+    background-color: #455a64;
+    border-color: #37474f;
+    color: #90a4ae;
+}
+
+@media (max-width: 768px) {
+    .game-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+    }
+
+    .players-panel {
+        padding: var(--space-md);
+        max-height: 300px;
+    }
+
+    .game-content {
+        padding: var(--space-sm);
+        gap: var(--space-md);
+    }
+
+    .info-container {
+        flex-direction: column;
+        padding: var(--space-sm);
+    }
+
+    .deaths-container,
+    .investigation-container {
+        width: 100%;
+    }
+
+    .action-panel.compact {
+        padding: var(--space-xs);
+    }
+}
+
+.deaths-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    border-radius: var(--rounded);
+    background-color: rgba(139, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.death-item {
+    display: flex;
+    align-items: center;
+    padding: var(--space-sm);
+    border-bottom: 1px solid rgba(139, 0, 0, 0.1);
+    color: var(--color-text);
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.death-item:last-child {
+    border-bottom: none;
+}
+
+.death-item:hover {
+    background-color: rgba(139, 0, 0, 0.1);
+}
+
+.death-emoji {
+    margin-right: var(--space-sm);
+    font-size: 1.2rem;
+    display: inline-block;
+    animation: pulse-fade 2s infinite;
+}
+
+.death-item.current-player {
+    background-color: rgba(139, 0, 0, 0.15);
+    font-weight: 700;
+    border-left: 3px solid var(--color-primary);
+}
+
+#lastDeaths h3 {
+    color: var(--color-primary);
+    margin-top: 0;
+    margin-bottom: var(--space-sm);
+    font-size: 1rem;
+    border-bottom: 1px solid rgba(139, 0, 0, 0.2);
+    padding-bottom: var(--space-xs);
+}
+
+/* Dark mode styles */
+.night-mode .deaths-list {
+    background-color: rgba(255, 85, 85, 0.1);
+}
+
+.night-mode .death-item {
+    border-bottom-color: rgba(255, 85, 85, 0.15);
+}
+
+.night-mode .death-item:hover {
+    background-color: rgba(255, 85, 85, 0.15);
+}
+
+.night-mode #lastDeaths {
+    background-color: rgba(22, 33, 62, 0.5);
+}
+
+.night-mode #lastDeaths h3 {
+    border-bottom-color: rgba(255, 85, 85, 0.2);
+}
+
+@keyframes pulse-fade {
+    0% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.7; transform: scale(1); }
+}
+
+.investigation-results-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    border-radius: var(--rounded);
+    background-color: rgba(25, 118, 210, 0.05);
+    overflow: hidden;
+}
+
+.investigation-result {
+    display: flex;
+    align-items: center;
+    padding: var(--space-sm);
+    border-bottom: 1px solid rgba(25, 118, 210, 0.1);
+    color: var(--color-text);
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.investigation-result:last-child {
+    border-bottom: none;
+}
+
+.investigation-result:hover {
+    background-color: rgba(25, 118, 210, 0.1);
+}
+
+.investigation-emoji {
+    margin-right: var(--space-sm);
+    font-size: 1.2rem;
+    display: inline-block;
+    animation: magnify 3s infinite;
+}
+
+.investigation-result .result {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.investigation-result .mafia {
+    background-color: var(--color-error);
+    color: white;
+}
+
+.investigation-result .not-mafia {
+    background-color: var(--color-success);
+    color: white;
+}
+
+#investigationResults h3 {
+    color: var(--color-investigator);
+    margin-top: 0;
+    margin-bottom: var(--space-sm);
+    font-size: 1rem;
+    border-bottom: 1px solid rgba(25, 118, 210, 0.2);
+    padding-bottom: var(--space-xs);
+}
+
+.night-mode .investigation-results-list {
+    background-color: rgba(25, 118, 210, 0.1);
+}
+
+.night-mode .investigation-result {
+    border-bottom-color: rgba(25, 118, 210, 0.15);
+}
+
+.night-mode .investigation-result:hover {
+    background-color: rgba(25, 118, 210, 0.15);
+}
+
+.night-mode #investigationResults {
+    background-color: rgba(22, 33, 62, 0.5);
+}
+
+.night-mode #investigationResults h3 {
+    border-bottom-color: rgba(25, 118, 210, 0.2);
+}
+
+@keyframes magnify {
+    0% { transform: scale(1); opacity: 0.7; }
+    30% { transform: scale(1.2); opacity: 1; }
+    60% { transform: scale(1); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 0.7; }
 }

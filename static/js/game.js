@@ -172,10 +172,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    
-    // -----------------------------------------------------
+
     // WebSocket Connection
-    // -----------------------------------------------------
     
     function connectGameSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -202,13 +200,22 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function handleSocketMessage(event) {
         try {
+            console.log("Received data:", event.data);
             const gameState = JSON.parse(event.data);
+            
+            // Debug
+            if (discussionElements.discussionFeed) {
+                const debugMsg = document.createElement('div');
+                debugMsg.style.color = 'blue';
+                debugMsg.style.fontSize = '11px';
+                debugMsg.textContent = `State update: Phase=${gameState.phase}, Round=${gameState.round}, Speaker=${gameState.current_speaker}`;
+                discussionElements.discussionFeed.appendChild(debugMsg);
+            }
             
             // Update game state
             state.gamePhase = gameState.phase;
             state.roundNumber = gameState.round;
-            state.isGameOver = gameState.game_status && gameStatus.game_status.is_over;
-            
+            state.isGameOver = gameState?.game_status?.is_over || false;            
             // Update UI
             updateGameDisplay(gameState);
         } catch (error) {
@@ -246,14 +253,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Show/hide sections based on phase
         updatePhaseVisibility(gameState.phase);
         
-        // Update alive players list
-        updatePlayersList(gameState.alive, gameState.phase);
+        // Update player lists
+        updatePlayersList(gameState.alive, gameState.phase, gameState.eliminated);
         
         // Update discussion feed
         updateDiscussionFeed(gameState.discussion);
-        
-        // Update eliminated players
-        updateEliminatedPlayers(gameState.eliminated);
         
         // Show deaths from last round
         updateLastDeaths(gameState.last_deaths);
@@ -268,6 +272,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update action area instructions
         updateActionArea(gameState.phase);
+        
+        // Update investigation results if player is investigator
+        if (state.playerRole === 'Investigator' && gameState.investigation_results) {
+            updateInvestigationResults(gameState.investigation_results);
+        }
     }
     
     function updatePhaseVisibility(phase) {
@@ -282,112 +291,156 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    function updatePlayersList(alivePlayers, currentPhase) {
-        if (!playerElements.playersList || !playerElements.actionsDiv) return;
+    function updatePlayersList(alivePlayers, currentPhase, deadPlayers = []) {
+        if (!playerElements.playersList) {
+            playerElements.playersList = document.createElement('ul');
+            playerElements.playersList.id = 'playersList';
+            playerElements.playersList.className = 'player-list';
+            playerElements.playersArea.appendChild(playerElements.playersList);
+        }
         
+        // Clear the list
         playerElements.playersList.innerHTML = '';
-        playerElements.actionsDiv.innerHTML = '';
         
-        if (!alivePlayers || !alivePlayers.length) return;
+        // Combined list of all players for display
+        const allPlayers = [];
         
-        // Sort players: current player first, then others
-        const sortedPlayers = [...alivePlayers].sort((a, b) => {
-            if (a === state.playerName) return -1;
-            if (b === state.playerName) return 1;
-            return a.localeCompare(b);
+        // Add alive players
+        if (alivePlayers && alivePlayers.length) {
+            alivePlayers.forEach(player => {
+                allPlayers.push({ name: player, isDead: false });
+            });
+        }
+        
+        // Add dead players
+        if (deadPlayers && deadPlayers.length) {
+            deadPlayers.forEach(player => {
+                allPlayers.push({ name: player, isDead: true });
+            });
+        }
+        
+        // Sort players: current player first, then alive, then dead
+        allPlayers.sort((a, b) => {
+            // Current player comes first
+            if (a.name === state.playerName) return -1;
+            if (b.name === state.playerName) return 1;
+            
+            // Then alive players
+            if (a.isDead !== b.isDead) return a.isDead ? 1 : -1;
+            
+            // Then alphabetically
+            return a.name.localeCompare(b.name);
         });
         
         // Create player list items
-        sortedPlayers.forEach(player => {
-            // Skip adding current player twice (we'll add at top)
-            if (player === state.playerName && sortedPlayers.indexOf(player) !== 0) {
-                return;
-            }
-            
+        allPlayers.forEach(player => {
             const li = document.createElement('li');
             li.className = 'player-item';
             
-            // Add special styling for current player
-            if (player === state.playerName) {
-                li.classList.add('current-player');
-                li.textContent = `${player} (You)`;
-            } else {
-                li.textContent = player;
-                
-                // Add action buttons if player is alive and it's relevant to their role
-                if (state.isAlive) {
-                    addActionButtonIfNeeded(player, currentPhase);
-                }
+            // Create a player info div to contain name and button
+            const playerInfoDiv = document.createElement('div');
+            playerInfoDiv.className = 'player-info-row';
+            if (player.isDead) {
+                playerInfoDiv.classList.add('player-dead');
             }
             
+            // Add player name span
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'player-name';
+            
+            // Add special styling for current player
+            if (player.name === state.playerName) {
+                nameSpan.classList.add('current-player');
+                nameSpan.textContent = `${player.name} (You)`;
+            } else {
+                nameSpan.textContent = player.name;
+            }
+            
+            playerInfoDiv.appendChild(nameSpan);
+            
+            // Add action button directly next to name if applicable
+            if (!player.isDead && player.name !== state.playerName && state.isAlive) {
+                addActionButtonToElement(player.name, currentPhase, playerInfoDiv);
+            }
+            
+            li.appendChild(playerInfoDiv);
             playerElements.playersList.appendChild(li);
         });
     }
     
-    function addActionButtonIfNeeded(targetPlayer, phase) {
-        if (!playerElements.actionsDiv) return;
-        
+    function addActionButtonToElement(targetPlayer, phase, parentElement) {
         if (phase === 'night') {
             // Night phase actions - role specific
             switch (state.playerRole) {
                 case 'Mafia':
-                    addActionButton('Kill', targetPlayer, 'night_kill');
+                    addActionButton('Kill', targetPlayer, 'night_kill', parentElement);
                     break;
                 case 'Doctor':
-                    addActionButton('Protect', targetPlayer, 'night_protect');
+                    addActionButton('Protect', targetPlayer, 'night_protect', parentElement);
                     break;
                 case 'Investigator':
-                    addActionButton('Investigate', targetPlayer, 'night_investigate');
+                    addActionButton('Investigate', targetPlayer, 'night_investigate', parentElement);
                     break;
             }
         } else if (phase === 'day') {
             // Day phase - everyone can vote
-            addActionButton('Vote', targetPlayer, 'vote');
+            addActionButton('Vote', targetPlayer, 'vote', parentElement);
         }
     }
     
-    function addActionButton(text, target, action) {
+    function addActionButton(text, target, action, parentElement) {
         const button = document.createElement('button');
         button.className = `action-btn ${action}-btn`;
-        button.textContent = `${text} ${target}`;
+        button.textContent = text;
         button.onclick = () => sendAction(action, target);
-        playerElements.actionsDiv.appendChild(button);
+        parentElement.appendChild(button);
     }
     
     function updateDiscussionFeed(messages) {
-        if (!discussionElements.discussionFeed || !messages) return;
+        if (!discussionElements.discussionFeed) return;
         
-        discussionElements.discussionFeed.innerHTML = '';
+        console.log("Updating discussion feed with:", messages);
         
-        messages.forEach(msg => {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message';
+        // Clear existing messages only if we have new ones to display
+        if (messages && messages.length > 0) {
+            discussionElements.discussionFeed.innerHTML = '';
             
-            const senderSpan = document.createElement('span');
-            senderSpan.className = 'sender';
-            senderSpan.textContent = msg[0] + ':';
+            messages.forEach(msg => {
+                // Check if message format is valid (array with sender and content)
+                if (!Array.isArray(msg) || msg.length < 2) {
+                    console.error("Invalid message format:", msg);
+                    return;
+                }
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                
+                const senderSpan = document.createElement('span');
+                senderSpan.className = 'sender';
+                senderSpan.textContent = msg[0] + ':';
+                
+                // Highlight current player's messages
+                if (msg[0] === state.playerName) {
+                    senderSpan.classList.add('own-message');
+                }
+                
+                // Highlight system messages
+                if (msg[0] === 'System') {
+                    messageDiv.classList.add('system-message');
+                }
+                
+                const contentSpan = document.createElement('span');
+                contentSpan.className = 'content';
+                contentSpan.textContent = ' ' + msg[1];
+                
+                messageDiv.appendChild(senderSpan);
+                messageDiv.appendChild(contentSpan);
+                discussionElements.discussionFeed.appendChild(messageDiv);
+            });
             
-            // Highlight current player's messages
-            if (msg[0] === state.playerName) {
-                senderSpan.classList.add('own-message');
-            }
-            
-            // Highlight system messages
-            if (msg[0] === 'System') {
-                messageDiv.classList.add('system-message');
-            }
-            
-            const contentSpan = document.createElement('span');
-            contentSpan.className = 'content';
-            contentSpan.textContent = ' ' + msg[1];
-            
-            messageDiv.appendChild(senderSpan);
-            messageDiv.appendChild(contentSpan);
-            discussionElements.discussionFeed.appendChild(messageDiv);
-        });
-        
-        // Auto-scroll to bottom
-        discussionElements.discussionFeed.scrollTop = discussionElements.discussionFeed.scrollHeight;
+            // Auto-scroll to bottom
+            discussionElements.discussionFeed.scrollTop = discussionElements.discussionFeed.scrollHeight;
+        }
     }
     
     function updateEliminatedPlayers(eliminatedPlayers) {
@@ -418,22 +471,38 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function updateLastDeaths(lastDeaths) {
         if (!lastDeaths || lastDeaths.length === 0 || !phaseElements.lastDeaths) {
+            // Hide the container when there are no deaths
+            if (phaseElements.lastDeaths) {
+                phaseElements.lastDeaths.style.display = 'none';
+            }
             return;
         }
         
+        // Show the container
+        phaseElements.lastDeaths.style.display = 'block';
         phaseElements.lastDeaths.innerHTML = '';
         
-        const heading = document.createElement('h4');
-        heading.textContent = 'Recent Deaths:';
+        const heading = document.createElement('h3');
+        heading.textContent = 'Recent Deaths';
         phaseElements.lastDeaths.appendChild(heading);
         
         const list = document.createElement('ul');
+        list.className = 'deaths-list';
+        
         lastDeaths.forEach(player => {
             const li = document.createElement('li');
-            li.textContent = player;
+            li.className = 'death-item';
+            
             if (player === state.playerName) {
                 li.classList.add('current-player');
             }
+            
+            const emoji = document.createElement('span');
+            emoji.className = 'death-emoji';
+            emoji.textContent = '☠️';
+            
+            li.appendChild(emoji);
+            li.appendChild(document.createTextNode(player));
             list.appendChild(li);
         });
         
@@ -457,7 +526,21 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (phase === 'night') {
             const roleText = document.createElement('p');
-            roleText.textContent = getNightInstructions();
+            let instructions = "Wait for the night phase to end.";
+            switch (state.playerRole) {
+                case 'Mafia':
+                    instructions = "Select a player to eliminate tonight.";
+                    break;
+                case 'Doctor':
+                    instructions = "Select a player to protect tonight.";
+                    break;
+                case 'Investigator':
+                    instructions = "Select a player to investigate tonight.";
+                    break;
+                default:
+                    instructions = "You have no special actions during the night.";
+            }
+            roleText.textContent = instructions;
             playerElements.actionArea.appendChild(roleText);
         } else {
             // Day phase
@@ -531,14 +614,38 @@ document.addEventListener('DOMContentLoaded', function() {
             const heading = document.createElement('h2');
             heading.textContent = 'Game Over';
             
-            const winner = document.createElement('p');
-            winner.className = 'game-winner';
-            winner.textContent = gameStatus.winner 
+            const winnerText = gameStatus.winner 
                 ? `${gameStatus.winner} Win!` 
                 : 'Game Ended in a Draw';
+                
+            const winner = document.createElement('div');
+            winner.className = 'game-winner';
+            winner.textContent = winnerText;
+            
+            const emojiSpan = document.createElement('div');
+            emojiSpan.style.fontSize = '3rem';
+            emojiSpan.style.marginBottom = '15px';
+            
+            // Add different emojis based on winner
+            if (gameStatus.winner === 'Mafia') {
+                emojiSpan.textContent = '😈';
+            } else if (gameStatus.winner === 'Villagers') {
+                emojiSpan.textContent = '👨‍👩‍👧‍👦';
+            } else {
+                emojiSpan.textContent = '🤝';
+            }
             
             const message = document.createElement('p');
             message.textContent = gameStatus.message || '';
+            
+            const resultDetails = document.createElement('div');
+            resultDetails.className = 'game-result-details';
+            
+            if (gameStatus.mafia_players) {
+                const mafiaList = document.createElement('p');
+                mafiaList.innerHTML = `<strong>Mafia players were:</strong> ${gameStatus.mafia_players.join(', ')}`;
+                resultDetails.appendChild(mafiaList);
+            }
             
             const returnButton = document.createElement('button');
             returnButton.className = 'btn btn-primary';
@@ -546,8 +653,12 @@ document.addEventListener('DOMContentLoaded', function() {
             returnButton.onclick = () => window.location.href = '/';
             
             content.appendChild(heading);
+            content.appendChild(emojiSpan);
             content.appendChild(winner);
             content.appendChild(message);
+            if (resultDetails.children.length > 0) {
+                content.appendChild(resultDetails);
+            }
             content.appendChild(returnButton);
             overlay.appendChild(content);
             
@@ -615,13 +726,140 @@ document.addEventListener('DOMContentLoaded', function() {
             message: message
         };
         
-        state.socket.send(JSON.stringify(messageData));
-        
-        // Clear input after sending
-        discussionElements.messageInput.value = '';
-        if (discussionElements.charCounter) {
-            discussionElements.charCounter.textContent = '0/200';
-            discussionElements.charCounter.style.color = '';
+        try {
+            state.socket.send(JSON.stringify(messageData));
+            console.log("Message sent:", message);
+            
+            // Debug message
+            const testMsg = document.createElement('div');
+            testMsg.textContent = `DEBUG: Message "${message}" sent to server`;
+            testMsg.style.color = 'green';
+            discussionElements.discussionFeed.appendChild(testMsg);
+            
+            // Clear input after sending
+            discussionElements.messageInput.value = '';
+            if (discussionElements.charCounter) {
+                discussionElements.charCounter.textContent = '0/200';
+            }
+            
+            // Disable input until next turn
+            discussionElements.chatInputArea.classList.add('chat-input-disabled');
+            discussionElements.messageInput.disabled = true;
+            discussionElements.sendMessageBtn.disabled = true;
+            
+            // Add sending indicator
+            const sendingIndicator = document.createElement('div');
+            sendingIndicator.id = 'sendingIndicator';
+            sendingIndicator.className = 'sending-indicator';
+            sendingIndicator.textContent = 'Message sent. Waiting for next speaker...';
+            
+            if (!document.getElementById('sendingIndicator')) {
+                discussionElements.chatInputArea.appendChild(sendingIndicator);
+            }
+        } catch (error) {
+            console.error("Error sending message:", error);
         }
+    }
+    
+    function disableActionButtons() {
+        const buttons = document.querySelectorAll('.action-btn');
+        buttons.forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('action-selected');
+        });
+        
+        // Add feedback that action was registered
+        const feedback = document.createElement('div');
+        feedback.className = 'action-feedback';
+        feedback.textContent = 'Action registered. Waiting for other players...';
+        
+        if (playerElements.actionsDiv && !document.querySelector('.action-feedback')) {
+            playerElements.actionsDiv.appendChild(feedback);
+        }
+    }
+
+    function cleanupResources() {
+        console.log('Cleaning up resources...');
+        
+        // Close WebSocket connection if open
+        if (state.socket) {
+            state.socket.close();
+        }
+        
+        // Clear any active intervals
+        if (state.pingInterval) {
+            clearInterval(state.pingInterval);
+        }
+    }
+    
+    async function advanceGamePhase() {
+        try {
+            console.log("Attempting to advance game phase...");
+            const response = await fetch(`/room/${state.roomId}/advance_phase`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Failed to advance phase:", errorData);
+                return;
+            }
+            
+            console.log("Game phase advanced successfully");
+        } catch (error) {
+            console.error("Error advancing game phase:", error);
+        }
+    }
+    
+    function updateInvestigationResults(results) {
+        const container = document.getElementById('investigationResults');
+        if (!container || !results || !results.length) {
+            if (container) container.style.display = 'none';
+            return;
+        }
+        
+        container.style.display = 'block';
+        container.innerHTML = '';
+        
+        const heading = document.createElement('h3');
+        heading.textContent = 'Investigation Results';
+        container.appendChild(heading);
+        
+        const resultsList = document.createElement('div');
+        resultsList.className = 'investigation-results-list';
+        
+        results.forEach(result => {
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'investigation-result';
+            
+            const emoji = document.createElement('span');
+            emoji.className = 'investigation-emoji';
+            emoji.textContent = '🔍';
+            resultDiv.appendChild(emoji);
+            
+            const detailsContainer = document.createElement('div');
+            detailsContainer.className = 'investigation-details';
+            
+            const investigatorInfo = document.createElement('div');
+            investigatorInfo.className = 'investigator-info';
+            investigatorInfo.innerHTML = `<span class="investigator">You</span> investigated:`;
+            detailsContainer.appendChild(investigatorInfo);
+            
+            const playerName = document.createElement('div');
+            playerName.className = 'investigated-player';
+            playerName.textContent = result.player;
+            detailsContainer.appendChild(playerName);
+            
+            resultDiv.appendChild(detailsContainer);
+            
+            const resultBadge = document.createElement('span');
+            resultBadge.className = `result ${result.isMafia ? 'mafia' : 'not-mafia'}`;
+            resultBadge.textContent = result.isMafia ? 'Mafia' : 'Not Mafia';
+            resultDiv.appendChild(resultBadge);
+            
+            resultsList.appendChild(resultDiv);
+        });
+        
+        container.appendChild(resultsList);
     }
 });

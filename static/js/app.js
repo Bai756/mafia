@@ -305,60 +305,84 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Get room and player info
         const roomData = getRoomData();
-        if (!roomData.roomId) {
+        if (!roomData.roomId || !roomData.playerName) {
             window.location.href = '/';
             return;
         }
         
-        // Display room ID
-        lobbyPage.roomIdDisplay.textContent = roomData.roomId;
-        
-        // Update player info header
-        updatePlayerInfoHeader();
-        
-        // Set up room status polling
-        fetchRoomStatus(roomData.roomId);
-        state.intervalId = setInterval(() => fetchRoomStatus(roomData.roomId), 2000);
-        
-        const roomId = window.ROOM_ID;
-        const playerName = window.PLAYER_NAME;
-        
-        if (roomId && playerName) {
-            state.connection = new ConnectionManager(roomId, playerName);
-            
-            // Handle incoming messages
-            state.connection.onMessage = function(data) {
-                console.log('Received lobby update:', data);
-                
-                // Handle different message types
-                if (data.type === "lobby_update" || data.type === "player_left") {
-                    state.isRoomOwner = (window.PLAYER_NAME === data.owner);
-                    
-                    // Update player list
-                    renderPlayersList(data.players, data.ai_players || [], window.PLAYER_NAME, data.owner);
-                    
-                    // Update player count
-                    if (lobbyPage.playerCount) {
-                        lobbyPage.playerCount.textContent = `${data.players.length}/10`;
-                    }
-                    
-                    updateStartGameButton(data.status);
-                } else if (data.type === "owner_changed") {
-                    state.isRoomOwner = (window.PLAYER_NAME === data.owner);
-                    
-                    // Update UI to reflect ownership change
-                    if (state.isRoomOwner) {
-                        showOwnerControls();
-                    }
+        // Authenticate lobby and player before initializing
+        authenticateLobby(roomData.roomId, roomData.playerName)
+            .then(lobbyData => {
+                if (lobbyData.error) {
+                    throw new Error(lobbyData.error);
                 }
-            };
-            
-            // Connect to lobby
-            state.connection.connect('lobby');
-        }
-        
-        // Initialize lobby buttons
-        initLobbyButtons(roomId);
+                
+                // Display room ID
+                lobbyPage.roomIdDisplay.textContent = roomData.roomId;
+                
+                // Update player info header
+                updatePlayerInfoHeader();
+                
+                // Set up room status polling
+                fetchRoomStatus(roomData.roomId);
+                state.intervalId = setInterval(() => fetchRoomStatus(roomData.roomId), 2000);
+                
+                // Initialize WebSocket connection
+                if (roomData.roomId && roomData.playerName) {
+                    state.connection = new ConnectionManager(roomData.roomId, roomData.playerName);
+                    
+                    // Handle incoming messages
+                    state.connection.onMessage = function(data) {
+                        console.log('Received lobby update:', data);
+                        
+                        // Handle error messages first
+                        if (data.error) {
+                            console.error('Server returned error:', data.error);
+                            alert(`Error: ${data.error}. Returning to homepage.`);
+                            window.location.href = '/';
+                            return;
+                        }
+                        
+                        // Handle different message types
+                        if (data.type === "lobby_update" || data.type === "player_left") {
+                            state.isRoomOwner = (window.PLAYER_NAME === data.owner);
+                            
+                            // Update player list
+                            renderPlayersList(data.players, data.ai_players || [], window.PLAYER_NAME, data.owner);
+                            
+                            // Update player count
+                            if (lobbyPage.playerCount) {
+                                lobbyPage.playerCount.textContent = `${data.players.length}/10`;
+                            }
+                            
+                            updateStartGameButton(data.status);
+                        } else if (data.type === "owner_changed") {
+                            state.isRoomOwner = (window.PLAYER_NAME === data.owner);
+                            
+                            // Update UI to reflect ownership change
+                            if (state.isRoomOwner) {
+                                showOwnerControls();
+                            }
+                        } else if (data.type === "game_started") {
+                            // Redirect to game page when game starts
+                            const playerName = window.PLAYER_NAME;
+                            const roomId = data.room_id;
+                            window.location.href = `/game?roomId=${roomId}&name=${encodeURIComponent(playerName)}`;
+                        }
+                    };
+                    
+                    // Connect to lobby
+                    state.connection.connect('lobby');
+                }
+                
+                // Initialize lobby buttons
+                initLobbyButtons(roomData.roomId);
+            })
+            .catch(error => {
+                console.error('Lobby authentication failed:', error);
+                alert('Failed to join lobby. Returning to homepage.');
+                window.location.href = '/';
+            });
     }
     
     function initLobbyButtons(roomId) {
@@ -416,9 +440,27 @@ document.addEventListener('DOMContentLoaded', function() {
     async function fetchRoomStatus(roomId) {
         try {
             const response = await fetch(`/room/${roomId}`);
+            
+            if (!response.ok) {
+                // Handle 404 and other errors
+                if (response.status === 404) {
+                    console.error('Room not found');
+                    alert('Room not found or has expired. Returning to homepage.');
+                    window.location.href = '/';
+                    return;
+                }
+                throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+            }
+            
             const data = await response.json();
             
             if (!lobbyPage.playersList) return;
+
+            // Defensive checks for the data
+            if (!data.players || !Array.isArray(data.players)) {
+                console.error('Invalid player data received:', data);
+                return;
+            }
             
             // Update room owner status
             const currentPlayerName = window.PLAYER_NAME;
@@ -441,6 +483,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Error fetching room status:', error);
+            
+            // Handle connection errors by redirecting after a few retries
+            if (!window.fetchErrorCount) window.fetchErrorCount = 0;
+            window.fetchErrorCount++;
+            
+            if (window.fetchErrorCount >= 3) {
+                alert('Unable to connect to room. Returning to homepage.');
+                window.location.href = '/';
+            }
         }
     }
     
@@ -663,6 +714,43 @@ document.addEventListener('DOMContentLoaded', function() {
         if (headerPlayerName) {
             const playerName = window.PLAYER_NAME;
             headerPlayerName.textContent = playerName || 'Anonymous';
+        }
+    }
+    
+    async function authenticateLobby(roomId, playerName) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+            
+            // Check if room exists and player is in it
+            const response = await fetch(`/room/${roomId}/verify-player`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: playerName
+                }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error('Room not found or has expired');
+                }
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to authenticate lobby');
+            }
+            
+            return await response.json();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error('Connection timed out. Server may be unavailable.');
+            }
+            console.error('Lobby verification error:', error);
+            throw error;
         }
     }
 });

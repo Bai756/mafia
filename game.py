@@ -130,7 +130,10 @@ class Game_Manager:
         return self.web_app_manager.get_game_status()
     
     def is_player_speaker(self, player):
-        return self.get_game_phase() == "day" and self.current_speaker == player.name
+        if isinstance(player, str):
+            return self.get_game_phase() == "day" and self.current_speaker == player
+        else:
+            return self.get_game_phase() == "day" and self.current_speaker == player.name
     
     def next_speaker(self):
         alive_players = self.get_alive_players()
