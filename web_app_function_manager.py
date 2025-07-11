@@ -38,16 +38,22 @@ class WebAppFunctionManager:
         voter = next((p for p in self.game.players if p.name == player_name and p.is_alive), None)
         target = next((p for p in self.game.players if p.name == target_name and p.is_alive), None)
 
-        if voter and target and target != voter:
-            if not hasattr(self.game, 'votes'):
-                self.game.votes = {}
-            self.game.votes[voter.name] = target.name
-            return True
-        return False
+        if not voter or not target or target == voter:
+            return False
+
+        # During revote phase, only allow voting for tied candidates
+        if hasattr(self.game, 'sub_phase') and self.game.sub_phase == "revote_voting":
+            if not hasattr(self.game, 'tied_candidates') or target_name not in self.game.tied_candidates:
+                return False
+
+        if not hasattr(self.game, 'votes'):
+            self.game.votes = {}
+        
+        self.game.votes[voter.name] = target_name
+        return True
 
     def try_advance(self):
         current_phase = self.get_game_phase()
-        print(f"[DEBUG] Checking if we can advance from {current_phase} phase...")
         
         if current_phase == "night":
             # Track which players with special roles need to act
@@ -55,14 +61,6 @@ class WebAppFunctionManager:
             doctors_need_to_act = [p.name for p in self.game.get_alive_players() if p.role == "Doctor" and not any(doc.name == p.name for doc, _ in self.game.last_protected)]
             mafia_need_to_act = [p.name for p in self.game.get_alive_players() if p.role == "Mafia" and not any(maf.name == p.name for maf, _ in self.game.last_targeted)]
             investigators_need_to_act = [p.name for p in self.game.get_alive_players() if p.role == "Investigator" and not any(inv.name == p.name for inv, _, _ in self.game.last_investigated)]
-
-            # Log which players still need to act
-            if doctors_need_to_act:
-                print(f"[DEBUG] Waiting for doctors to act: {', '.join(doctors_need_to_act)}")
-            if mafia_need_to_act:
-                print(f"[DEBUG] Waiting for mafia to act: {', '.join(mafia_need_to_act)}")
-            if investigators_need_to_act:
-                print(f"[DEBUG] Waiting for investigators to act: {', '.join(investigators_need_to_act)}")
 
             # Check if any AI players with special roles still need to act
             ai_players_need_to_act = [
@@ -74,12 +72,13 @@ class WebAppFunctionManager:
             for ai_player in ai_players_need_to_act:
                 valid_targets = [p for p in self.game.get_alive_players() if p != ai_player]
                 if ai_player.role == "Mafia":
-                    valid_targets = [p for p in valid_targets if p.role != "Mafia"]
+                    valid_targets = [p for p in valid_targets if p.role != "Mafia" and p not in self.game.last_targeted]
                     if valid_targets:
                         target = ai_player.vote(self.game, valid_targets)
                         if target:
                             print(f"[DEBUG] AI {ai_player.name} (Mafia) targeting {target.name}")
                             self.mafia_action(ai_player.name, target.name)
+                            self.game.last_targeted.append((ai_player, target))
                 elif ai_player.role == "Doctor" and valid_targets:
                     target = ai_player.vote(self.game, valid_targets)
                     if target:
@@ -100,7 +99,6 @@ class WebAppFunctionManager:
             all_mafia_acted = len(mafia_need_to_act) == 0
             all_investigators_acted = len(investigators_need_to_act) == 0
             if all_doctors_acted and all_mafia_acted and all_investigators_acted:
-                print("[DEBUG] All night actions completed, advancing to day phase")
                 # Process night results
                 self._resolve_night_actions()
                 self.game.is_night = False
@@ -112,8 +110,8 @@ class WebAppFunctionManager:
                 
                 deaths_text = "No one died last night."
                 if self.game.last_deaths:
-                    deaths_text = f"The following players died during the night: {', '.join(p.name for p in self.game.last_deaths)}."
-                    
+                    deaths_text = f"The following players died during the night: {', '.join(list(dict.fromkeys(p.name for p in self.game.last_deaths)))}."
+
                 self.game.discussion_history[round_num].append(("System", deaths_text))
                 
                 # Check win condition after night phase
@@ -125,51 +123,27 @@ class WebAppFunctionManager:
         else:
             # Day phase - check if everyone has voted
             alive_players = self.game.get_alive_players()
-            alive_count = len(alive_players)
             votes_count = len(getattr(self.game, 'votes', {}))
             
-            print(f"[DEBUG] Day phase: {votes_count}/{alive_count} votes received")
+            # Check which sub-phase we're in
+            sub_phase = getattr(self.game, 'sub_phase', None)
             
-            # Check if any AI players still need to vote
-            ai_players = [p for p in alive_players if isinstance(p, AI_Player)]
-            for ai_player in ai_players:
-                if ai_player.name not in getattr(self.game, 'votes', {}):
-                    # AI player hasn't voted yet, make them vote
-                    valid_targets = [p for p in alive_players if p != ai_player]
-                    if valid_targets:
-                        target = ai_player.vote(self.game, valid_targets)
-                        if target:
-                            print(f"[DEBUG] AI {ai_player.name} voting for {target.name}")
-                            self.vote_action(ai_player.name, target.name)
-                            votes_count += 1
-            
-            if votes_count >= alive_count:
-                print("[DEBUG] All votes received, advancing to night phase")
-                self._resolve_day_votes()
-                self.game.is_night = True
-                self.game.round_number += 1
-                
-                # Reset for next round
-                self.game.last_protected = []
-                self.game.last_targeted = []
-                self.game.last_deaths = []
-                
-                # Reset votes
-                self.game.votes = {}
-                
-                # Add night beginning message
-                round_num = self.game.round_number
-                if round_num not in self.game.discussion_history:
-                    self.game.discussion_history[round_num] = []
-                    
-                self.game.discussion_history[round_num].append(("System", f"Night of round {round_num} begins."))
-                
-                # Check win condition after day phase
-                game_status = self.get_game_status()
-                if game_status["is_over"]:
-                    self.game.discussion_history[round_num].append(("System", f"Game over! {game_status['winner']} win!"))
-                
-                return True
+            # Make AI players vote only in voting or revote_voting phases
+            if sub_phase in ["voting", "revote_voting"]:
+                ai_players = [p for p in alive_players if isinstance(p, AI_Player)]
+                for ai_player in ai_players:
+                    if ai_player.name not in getattr(self.game, 'votes', {}):
+                        valid_targets = [p for p in alive_players if p != ai_player]
+                        
+                        # If in revote phase, only allow voting for tied candidates
+                        if sub_phase == "revote_voting" and hasattr(self.game, 'tied_candidates'):
+                            valid_targets = [p for p in valid_targets if p.name in self.game.tied_candidates]
+                        
+                        if valid_targets:
+                            target = ai_player.vote(self.game, valid_targets)
+                            if target:
+                                self.vote_action(ai_player.name, target.name)
+                                votes_count += 1
     
         return False
 
@@ -188,25 +162,89 @@ class WebAppFunctionManager:
         # Reset protections
         for player in self.game.players:
             player.is_protected = False
+        
+        self.game.last_protected.clear()
+        self.game.last_targeted.clear()
 
     def _resolve_day_votes(self):
-        vote_counts = {}
-        for target_name in self.game.votes.values():
-            vote_counts[target_name] = vote_counts.get(target_name, 0) + 1
+        vote_counts = self._count_votes()
         
         if not vote_counts:
-            return
+            return False
         
         max_votes = max(vote_counts.values())
         most_voted = [name for name, count in vote_counts.items() if count == max_votes]
         
+        # Initialize revote counter if it doesn't exist
+        if not hasattr(self.game, 'revote_count'):
+            self.game.revote_count = 0
+        
+        # Check if this is already a revote
+        is_revote = self.game.sub_phase in ["revote_voting", "revote_discussion"]
+        if is_revote:
+            self.game.revote_count += 1
+        
         if len(most_voted) == 1:
+            # Clear winner - eliminate player
             eliminated_name = most_voted[0]
             eliminated = next((p for p in self.game.players if p.name == eliminated_name), None)
             if eliminated:
                 eliminated.is_alive = False
-        
-        self.game.votes = {}
+                self.game.last_voted_out = eliminated_name
+                
+                # Add system message about elimination
+                round_num = self.game.round_number
+                if round_num in self.game.discussion_history:
+                    self.game.discussion_history[round_num].append(
+                        ("System", f"{eliminated_name} was voted out by the town.")
+                    )
+                
+                # Reset voting state
+                self.game.votes = {}
+                self.game.tied_candidates = []
+                self.game.revote_count = 0
+                    
+                return True
+        else:
+            # Check if we've had too many revotes or if all alive players are tied
+            alive_player_count = len(self.game.get_alive_players())
+            all_tied = len(most_voted) == alive_player_count
+            
+            if self.game.revote_count >= 2 or all_tied:
+                # Too many revotes or all players tied - skip elimination
+                round_num = self.game.round_number
+                if round_num in self.game.discussion_history:
+                    if all_tied:
+                        msg = "The vote was tied between everyone! No one will be eliminated today."
+                    else:
+                        msg = "Voting remains tied after multiple revotes. No one will be eliminated today."
+                        
+                    self.game.discussion_history[round_num].append(("System", msg))
+                
+                # Reset voting state and proceed to night without elimination
+                self.game.votes = {}
+                self.game.tied_candidates = []
+                self.game.revote_count = 0
+                return True
+            else:
+                # Set up for revote discussion phase
+                self.game.tied_candidates = most_voted
+                self.game.sub_phase = "revote_discussion"
+                self.game.votes = {}
+                
+                # Add system message about tie
+                round_num = self.game.round_number
+                if round_num in self.game.discussion_history:
+                    tie_msg = f"The vote resulted in a tie between: {', '.join(most_voted)}. A brief discussion will be held before revoting."
+                    self.game.discussion_history[round_num].append(("System", tie_msg))
+                
+                return False
+            
+    def _count_votes(self):
+        vote_counts = {}
+        for target_name in self.game.votes.values():
+            vote_counts[target_name] = vote_counts.get(target_name, 0) + 1
+        return vote_counts
 
     def get_player_role(self, player_name):
         player = next((p for p in self.game.players if p.name == player_name), None)
@@ -232,48 +270,33 @@ class WebAppFunctionManager:
         }
     
     def add_message(self, player_name, message):
-        print(f"[DEBUG] add_message called for {player_name}: '{message}'")
-        print(f"[DEBUG] Current phase: {self.game.get_game_phase()}")
-        print(f"[DEBUG] Current speaker: {self.game.current_speaker}")
-        print(f"[DEBUG] is_player_speaker: {self.game.is_player_speaker(player_name)}")
-        
         if self.game.get_game_phase() == "day" and self.game.is_player_speaker(player_name):
             round_number = self.game.round_number
-            print(f"[DEBUG] Adding message to round {round_number}")
             if round_number not in self.game.discussion_history:
                 self.game.discussion_history[round_number] = []
             
             self.game.discussion_history[round_number].append((player_name, message))
-            print(f"[DEBUG] Message added successfully, moving to next speaker")
             self.game.next_speaker()
-            print(f"[DEBUG] New speaker: {self.game.current_speaker}")
             return True
         
-        print(f"[DEBUG] Failed to add message")
         return False
     
     def process_ai_night_actions(self):
-        print("[DEBUG] Processing AI night actions...")
         ai_actions_taken = False
         
         for player in self.game.get_alive_players():
             if not isinstance(player, AI_Player):
                 continue
-            
-            print(f"[DEBUG] Processing AI {player.name} with role {player.role}")
-            
+                        
             # Get valid targets based on role
             valid_targets = [p for p in self.game.get_alive_players() if p != player]
             if player.role == "Mafia":
-                valid_targets = [p for p in valid_targets if p.role != "Mafia"]
+                valid_targets = [p for p in valid_targets if p.role != "Mafia" and p not in self.game.last_targeted]
                 if valid_targets:
                     target = player.vote(self.game, valid_targets)
                     if target:
-                        print(f"[DEBUG] AI {player.name} (Mafia) targeting {target.name}")
                         self.mafia_action(player.name, target.name)
                         ai_actions_taken = True
-                    else:
-                        print(f"[DEBUG] AI {player.name} (Mafia) returned no target!")
             elif player.role == "Doctor":
                 if valid_targets:
                     target = player.vote(self.game, valid_targets)

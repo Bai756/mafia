@@ -19,6 +19,10 @@ class Game_Manager:
         self.is_night = True
         self.votes = {}
         self.current_speaker = None
+        self.sub_phase = None
+        self.phase_timer = None
+        self.tied_candidates = []
+        self.last_voted_out = None
 
         self.use_model = use_model
         if use_model:

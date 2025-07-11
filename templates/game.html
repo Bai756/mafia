@@ -28,8 +28,12 @@
             <div class="game-info">
                 <h1>Mafia Game</h1>
                 <div class="stats">
-                    <span>Round: <span id="roundDisplay">1</span></span>
-                    <span>Phase: <span id="phaseDisplay">Day</span></span>
+                    <div class="stats-left">
+                        <span>Round: <span id="roundDisplay">1</span></span>
+                        <span>Phase: <span id="phaseDisplay">Day</span></span>
+                        <span>Mafia Left: <span id="mafiaCountDisplay">2</span></span>
+                    </div>
+                    <span id="phaseTimer" class="phase-timer">00:00</span>
                 </div>
             </div>
         </header>
@@ -72,6 +76,7 @@
                         
                         <div class="info-container">
                             <div id="lastDeaths" class="deaths-container"></div>
+                            <div id="lastVotedOut" class="voted-out-container"></div>
                             <div id="investigationResults" class="investigation-container"></div>
                         </div>
                     </div>

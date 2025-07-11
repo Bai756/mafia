@@ -227,7 +227,7 @@ class AI_Player(Player):
 
             Your recent role actions:
             {mem or '- None'}
-            There are {number_of_mafia} Mafia members remaining. So, if that many people died last night, then all the mafia kills were successful.
+            There are {number_of_mafia} Mafia members remaining. So, if that many people died last night, then all the mafia kills were successful. Each Mafia member kills one person each night.
 
             Current round discussion:
             {history_str}
@@ -251,7 +251,7 @@ class AI_Player(Player):
             - Do NOT say your inner thoughts outloud, say your argument as you are speaking to the other players.
             - Do NOT accuse others of being quiet or not participating if the discussion just started.
 
-            Now, based on the above, make a new in-character statement responding to the discussion and recent events.
+            Now, based on the above, make a new in-character statement responding to the discussion and recent events. Max 200 characters.
             """
 
         # response = requests.post(

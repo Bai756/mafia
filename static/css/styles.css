@@ -25,6 +25,10 @@
     
     --bg-light-panel: #f9f9f9;
     --bg-dark-panel: #1e2642;
+
+    --color-warning: #ff9800;
+    --color-warning-dark: #f57c00;
+    --color-warning-rgb: 255, 152, 0;
 }
 
 * {
@@ -190,12 +194,27 @@ input {
 
 .stats {
     display: flex;
-    gap: var(--space-md);
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
     font-size: 1.0rem;
     margin-bottom: var(--space-xs);
     position: relative;
     z-index: 10;
     font-weight: bold;
+}
+
+.stats-left {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.phase-timer {
+    margin-left: auto;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: var(--rounded);
+    background-color: rgba(0, 0, 0, 0.1);
 }
 
 .game-header::after {
@@ -339,7 +358,6 @@ input {
     display: flex;
     flex-direction: column;
     order: 1;
-    min-height: 0;
     padding: var(--space-sm);
 }
 
@@ -358,8 +376,7 @@ input {
     margin-top: var(--space-sm);
     background-color: var(--bg-light-panel);
     border-radius: var(--rounded);
-    max-height: none;
-    min-height: 0;
+    max-height: 40vh;
 }
 
 .action-panel {
@@ -578,6 +595,7 @@ input {
     resize: none;
     font-family: inherit;
     background-color: white;
+    font-size: 1rem;
 }
 
 .night-mode .message-input {
@@ -733,10 +751,48 @@ input {
     background-color: var(--bg-dark-panel);
 }
 
+.phase-timer {
+    margin-left: var(--space-md);
+    font-weight: bold;
+    padding: 4px 8px;
+    border-radius: var(--rounded);
+    background-color: rgba(0, 0, 0, 0.1);
+    display: inline-block;
+}
+
+.night-timer {
+    background-color: rgba(25, 25, 112, 0.2);
+    color: #5d8bf4;
+}
+
+.day-timer {
+    background-color: rgba(218, 165, 32, 0.2);
+}
+
+.discussion-timer {
+    color: var(--color-secondary);
+}
+
+.voting-timer {
+    color: var(--color-primary);
+}
+
+.timer-warning {
+    color: var(--color-error);
+    animation: pulse 1s infinite;
+}
+
+.voting-active {
+    color: var(--color-primary);
+    font-weight: bold;
+    margin-bottom: var(--space-sm);
+    animation: pulse 2s infinite;
+}
+
 @keyframes pulse {
-    0% { opacity: 0.7; }
+    0% { opacity: 0.8; }
     50% { opacity: 1; }
-    100% { opacity: 0.7; }
+    100% { opacity: 0.8; }
 }
 
 .owner-controls {
@@ -954,43 +1010,40 @@ input {
 
 .investigation-result {
     display: flex;
+    justify-content: space-between;
     align-items: center;
     padding: var(--space-sm);
+    background-color: rgba(25, 118, 210, 0.05);
     border-bottom: 1px solid rgba(25, 118, 210, 0.1);
-    color: var(--color-text);
-    font-weight: 500;
-    transition: background-color 0.2s ease;
-}
-
-.investigation-result:last-child {
-    border-bottom: none;
+    transition: background-color 0.3s;
 }
 
 .investigation-result:hover {
     background-color: rgba(25, 118, 210, 0.1);
 }
 
-.investigation-emoji {
-    margin-right: var(--space-sm);
-    font-size: 1.2rem;
-    display: inline-block;
-    animation: magnify 3s infinite;
+.investigated-name {
+    flex: 1;
+    margin-right: 10px;
 }
 
-.investigation-result .result {
-    margin-left: auto;
-    padding: 2px 8px;
+.result {
+    display: inline-block;
+    padding: 3px 8px;
     border-radius: 10px;
     font-size: 0.8rem;
     font-weight: 600;
+    min-width: 80px;
+    text-align: center;
 }
 
-.investigation-result .mafia {
-    background-color: var(--color-error);
+.result.mafia {
+    background-color: var(--color-mafia);
     color: white;
+    animation: pulse 2s infinite;
 }
 
-.investigation-result .not-mafia {
+.result.not-mafia {
     background-color: var(--color-success);
     color: white;
 }
@@ -1029,4 +1082,129 @@ input {
     30% { transform: scale(1.2); opacity: 1; }
     60% { transform: scale(1); opacity: 0.9; }
     100% { transform: scale(1); opacity: 0.7; }
+}
+
+.voted-out-container {
+    flex: 1;
+    min-width: 250px;
+    padding: var(--space-sm);
+    background-color: rgba(255, 255, 255, 0.5);
+    margin: 0;
+}
+
+.voted-out-container h3 {
+    color: #7b1fa2;
+    margin-top: 0;
+    margin-bottom: var(--space-sm);
+    font-size: 1rem;
+    border-bottom: 1px solid rgba(123, 31, 162, 0.2);
+    padding-bottom: var(--space-xs);
+}
+
+.voted-out-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    border-radius: var(--rounded);
+    background-color: rgba(123, 31, 162, 0.05);
+    overflow: hidden;
+}
+
+.voted-out-item {
+    display: flex;
+    align-items: center;
+    padding: var(--space-sm);
+    border-bottom: 1px solid rgba(123, 31, 162, 0.1);
+    color: var(--color-text);
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.voted-out-item:last-child {
+    border-bottom: none;
+}
+
+.voted-out-item:hover {
+    background-color: rgba(123, 31, 162, 0.1);
+}
+
+.voted-out-emoji {
+    margin-right: var(--space-sm);
+    font-size: 1.2rem;
+    display: inline-block;
+    animation: pulse 2s infinite;
+}
+
+.voted-out-item.current-player {
+    background-color: rgba(123, 31, 162, 0.15);
+    font-weight: 700;
+    border-left: 3px solid #7b1fa2;
+}
+
+.night-mode .voted-out-container {
+    background-color: rgba(22, 33, 62, 0.5);
+}
+
+.night-mode .voted-out-list {
+    background-color: rgba(123, 31, 162, 0.1);
+}
+
+.night-mode .voted-out-item {
+    border-bottom-color: rgba(123, 31, 162, 0.15);
+}
+
+.night-mode .voted-out-item:hover {
+    background-color: rgba(123, 31, 162, 0.15);
+}
+
+.night-mode .voted-out-container h3 {
+    border-bottom-color: rgba(123, 31, 162, 0.2);
+}
+
+.revote-notice {
+    background-color: rgba(var(--color-warning-rgb), 0.15);
+    border-left: 3px solid var(--color-warning);
+    padding: var(--space-sm);
+    margin-bottom: var(--space-md);
+    border-radius: var(--rounded);
+}
+
+.tied-candidates {
+    margin-top: var(--space-xs);
+    font-size: 0.9rem;
+}
+
+.tied-players {
+    font-weight: bold;
+    color: var(--color-warning);
+}
+
+.revote-btn {
+    background-color: var(--color-warning);
+    border-color: var(--color-warning-dark);
+    color: white;
+}
+
+.revote-btn:hover {
+    background-color: var(--color-warning-dark);
+}
+
+.revote_discussion-timer {
+    background-color: rgba(255, 152, 0, 0.2);
+    color: #ff9800;
+}
+
+.revote_voting-timer {
+    background-color: rgba(255, 87, 34, 0.2);
+    color: #ff5722;
+}
+
+.fellow-mafia {
+    background-color: rgba(255, 85, 85, 0.15);
+    border-left: 3px solid var(--color-mafia);
+}
+
+.fellow-mafia .player-name::after {
+    content: " 🔪";
+    font-size: 0.9em;
 }

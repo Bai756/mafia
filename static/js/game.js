@@ -9,7 +9,12 @@ document.addEventListener('DOMContentLoaded', function() {
         roomId: window.ROOM_ID || localStorage.getItem('roomId'),
         gamePhase: null,
         roundNumber: 1,
-        isGameOver: false
+        isGameOver: false,
+        timerInterval: null,
+        timerSeconds: null,
+        currentPhase: null,
+        currentSubPhase: null,
+        tiedCandidates: []
     };
 
     // Header elements
@@ -24,7 +29,8 @@ document.addEventListener('DOMContentLoaded', function() {
         roleDisplay: document.getElementById('roleDisplay'),
         roundDisplay: document.getElementById('roundDisplay'),
         phaseDisplay: document.getElementById('phaseDisplay'),
-        gameStatus: document.getElementById('gameStatus')
+        gameStatus: document.getElementById('gameStatus'),
+        mafiaCountDisplay: document.getElementById('mafiaCountDisplay')
     };
     
     // Player and action elements
@@ -119,6 +125,42 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Authentication error:', error);
             throw error;
         }
+    }
+
+    function enableRevoteDiscussionMode(tiedCandidates) {
+        // Show explanation in action area about the tied vote
+        const actionArea = document.getElementById('actionArea');
+        if (actionArea) {
+            actionArea.innerHTML = '';
+            const revoteMsg = document.createElement('p');
+            revoteMsg.className = 'revote-notice';
+            revoteMsg.innerHTML = `<strong>Vote tied!</strong> Discussion about tied candidates: 
+                              <span class="tied-players">${tiedCandidates.join(', ')}</span>`;
+            actionArea.appendChild(revoteMsg);
+        }
+        
+        // Hide ALL vote buttons during revote discussion phase
+        document.querySelectorAll('.action-btn.vote-btn').forEach(btn => {
+            btn.style.display = 'none';
+        });
+    }
+
+    function enableRevoteVotingMode(tiedCandidates) {
+        // Reuse the existing updateRevoteUI function for revote voting
+        updateRevoteUI(tiedCandidates);
+        
+        // Show vote buttons only for tied candidates
+        document.querySelectorAll('.vote-btn').forEach(btn => {
+            const targetName = btn.getAttribute('data-target');
+            if (tiedCandidates.includes(targetName)) {
+                btn.style.display = 'inline-block';
+                btn.disabled = false;
+                btn.classList.remove('action-selected');
+                btn.classList.add('revote-btn');
+            } else {
+                btn.style.display = 'none';
+            }
+        });
     }
     
     function updatePlayerInfoHeader() {
@@ -215,7 +257,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update game state
             state.gamePhase = gameState.phase;
             state.roundNumber = gameState.round;
-            state.isGameOver = gameState?.game_status?.is_over || false;            
+            state.isGameOver = gameState?.game_status?.is_over || false;
+            state.timer = gameState?.timer || 0;
+            state.subPhase = gameState?.sub_phase || '';
+            state.fellowMafia = gameState?.fellow_mafia || [];
+
             // Update UI
             updateGameDisplay(gameState);
         } catch (error) {
@@ -250,6 +296,11 @@ document.addEventListener('DOMContentLoaded', function() {
             statusElements.roundDisplay.textContent = gameState.round;
         }
         
+        // Add mafia count display
+        if (statusElements.mafiaCountDisplay) {
+            statusElements.mafiaCountDisplay.textContent = gameState.mafia_count || '?';
+        }
+        
         // Show/hide sections based on phase
         updatePhaseVisibility(gameState.phase);
         
@@ -262,6 +313,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Show deaths from last round
         updateLastDeaths(gameState.last_deaths);
         
+        // Show last voted out player
+        updateLastVotedOut(gameState.last_voted_out);
+        
         // Update chat input availability based on turn
         updateChatInput(gameState);
         
@@ -273,10 +327,33 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update action area instructions
         updateActionArea(gameState.phase);
         
-        // Update investigation results if player is investigator
-        if (state.playerRole === 'Investigator' && gameState.investigation_results) {
+        // Update investigation results if they're available
+        if (gameState.investigation_results && gameState.investigation_results.length > 0) {
             updateInvestigationResults(gameState.investigation_results);
         }
+        
+        // Update timer display if present
+        if (gameState.timer !== undefined) {
+            updateTimerDisplay(gameState.timer, gameState.phase, gameState.sub_phase, true);
+        }
+        
+        // Update phase-specific UI based on sub_phase
+        if (gameState.phase === 'day') {
+            console.log("Current sub-phase:", gameState.sub_phase);
+            
+            if (gameState.sub_phase === 'discussion') {
+                enableDiscussionMode();
+            } else if (gameState.sub_phase === 'voting') {
+                enableVotingMode();
+            } else if (gameState.sub_phase === 'revote_discussion') {
+                enableRevoteDiscussionMode(gameState.tied_candidates);
+            } else if (gameState.sub_phase === 'revote_voting') {
+                enableRevoteVotingMode(gameState.tied_candidates);
+            }
+        }
+        
+        // Store tied candidates info
+        state.tiedCandidates = gameState.tied_candidates || [];
     }
     
     function updatePhaseVisibility(phase) {
@@ -344,16 +421,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 playerInfoDiv.classList.add('player-dead');
             }
             
+            // Highlight fellow mafia members if the current player is mafia
+            if (state.playerRole === 'Mafia' && state.fellowMafia && 
+                state.fellowMafia.includes(player.name)) {
+                playerInfoDiv.classList.add('fellow-mafia');
+            }
+            
             // Add player name span
             const nameSpan = document.createElement('span');
             nameSpan.className = 'player-name';
             
+            // Add death indicator for dead players
+            if (player.isDead) {
+                const deathSign = document.createElement('span');
+                deathSign.className = 'player-death-sign';
+                deathSign.textContent = '☠️ ';
+                deathSign.setAttribute('title', 'Eliminated');
+                nameSpan.appendChild(deathSign);
+            }
+            
             // Add special styling for current player
             if (player.name === state.playerName) {
                 nameSpan.classList.add('current-player');
-                nameSpan.textContent = `${player.name} (You)`;
+                nameSpan.appendChild(document.createTextNode(`${player.name} (You)`));
             } else {
-                nameSpan.textContent = player.name;
+                nameSpan.appendChild(document.createTextNode(player.name));
             }
             
             playerInfoDiv.appendChild(nameSpan);
@@ -373,7 +465,16 @@ document.addEventListener('DOMContentLoaded', function() {
             // Night phase actions - role specific
             switch (state.playerRole) {
                 case 'Mafia':
-                    addActionButton('Kill', targetPlayer, 'night_kill', parentElement);
+                    // Don't allow targeting fellow mafia members
+                    if (!state.fellowMafia || !state.fellowMafia.includes(targetPlayer)) {
+                        addActionButton('Kill', targetPlayer, 'night_kill', parentElement);
+                    } else {
+                        // Add visual indicator that this is a teammate instead
+                        const teamIndicator = document.createElement('span');
+                        teamIndicator.className = 'team-indicator';
+                        teamIndicator.textContent = '🤝 Teammate';
+                        parentElement.appendChild(teamIndicator);
+                    }
                     break;
                 case 'Doctor':
                     addActionButton('Protect', targetPlayer, 'night_protect', parentElement);
@@ -392,6 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const button = document.createElement('button');
         button.className = `action-btn ${action}-btn`;
         button.textContent = text;
+        button.setAttribute('data-target', target);
         button.onclick = () => sendAction(action, target);
         parentElement.appendChild(button);
     }
@@ -711,7 +813,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         state.socket.send(JSON.stringify(actionData));
         
-        // Disable action buttons after selection
+        console.log(`Action sent: ${action} on ${target}`);
+
         disableActionButtons();
     }
     
@@ -790,6 +893,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (state.pingInterval) {
             clearInterval(state.pingInterval);
         }
+        
+        // Clear timer interval
+        if (state.timerInterval) {
+            clearInterval(state.timerInterval);
+        }
     }
     
     async function advanceGamePhase() {
@@ -828,7 +936,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const resultsList = document.createElement('div');
         resultsList.className = 'investigation-results-list';
         
-        results.forEach(result => {
+        // Process results in reverse order so newest are at the top
+        [...results].reverse().forEach(result => {
             const resultDiv = document.createElement('div');
             resultDiv.className = 'investigation-result';
             
@@ -837,21 +946,13 @@ document.addEventListener('DOMContentLoaded', function() {
             emoji.textContent = '🔍';
             resultDiv.appendChild(emoji);
             
-            const detailsContainer = document.createElement('div');
-            detailsContainer.className = 'investigation-details';
+            // Player name
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'investigated-name';
+            nameDiv.innerHTML = `<strong>${result.name}</strong>`;
+            resultDiv.appendChild(nameDiv);
             
-            const investigatorInfo = document.createElement('div');
-            investigatorInfo.className = 'investigator-info';
-            investigatorInfo.innerHTML = `<span class="investigator">You</span> investigated:`;
-            detailsContainer.appendChild(investigatorInfo);
-            
-            const playerName = document.createElement('div');
-            playerName.className = 'investigated-player';
-            playerName.textContent = result.player;
-            detailsContainer.appendChild(playerName);
-            
-            resultDiv.appendChild(detailsContainer);
-            
+            // Show the investigation result with appropriate styling
             const resultBadge = document.createElement('span');
             resultBadge.className = `result ${result.isMafia ? 'mafia' : 'not-mafia'}`;
             resultBadge.textContent = result.isMafia ? 'Mafia' : 'Not Mafia';
@@ -861,5 +962,193 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         container.appendChild(resultsList);
+    }
+    
+    function updateTimerDisplay(seconds, phase, subPhase, isServerUpdate = false) {
+        // Create timer element if it doesn't exist
+        let timerElement = document.getElementById('phaseTimer');
+        if (!timerElement) {
+            timerElement = document.createElement('div');
+            timerElement.id = 'phaseTimer';
+            timerElement.className = 'phase-timer';
+            
+            // Add it to the appropriate container
+            const container = document.querySelector('.game-header .stats');
+            if (container) {
+                container.appendChild(timerElement);
+            }
+        }
+
+        // If this is a server update, update our local timer and restart the interval
+        if (isServerUpdate) {
+            // Clear any existing timer
+            if (state.timerInterval) {
+                clearInterval(state.timerInterval);
+                state.timerInterval = null;
+            }
+
+            // Update state
+            state.timerSeconds = seconds;
+            state.currentPhase = phase;
+            state.currentSubPhase = subPhase;
+
+            // Start a new interval to update every second
+            state.timerInterval = setInterval(function() {
+                if (state.timerSeconds > 0) {
+                    state.timerSeconds--;
+                    updateTimerDisplay(state.timerSeconds, state.currentPhase, state.currentSubPhase);
+                } else {
+                    // Timer has reached zero, clear the interval
+                    clearInterval(state.timerInterval);
+                    state.timerInterval = null;
+                }
+            }, 1000);
+        }
+        
+        // Format time as MM:SS
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        const timeString = `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+        
+        // Update timer text and style based on phase
+        if (phase === 'night') {
+            timerElement.textContent = `Night ends: ${timeString}`;
+            timerElement.className = 'phase-timer night-timer';
+        } else {
+            // Day phase with various sub-phases
+            let phaseText = 'Day';
+            if (subPhase === 'discussion') {
+                phaseText = 'Discussion';
+            } else if (subPhase === 'voting') {
+                phaseText = 'Voting';
+            } else if (subPhase === 'revote_discussion') {
+                phaseText = 'Revote Discussion';
+            } else if (subPhase === 'revote_voting') {
+                phaseText = 'Revoting';
+            }
+            
+            timerElement.textContent = `${phaseText} ends: ${timeString}`;
+            timerElement.className = `phase-timer day-timer ${subPhase}-timer`;
+        }
+        
+        // Add warning style when time is running low (less than 20 seconds)
+        if (seconds < 10) {
+            timerElement.classList.add('timer-warning');
+        }
+    }
+
+    function enableDiscussionMode() {
+        // Show explanation in action area
+        const actionArea = document.getElementById('actionArea');
+        if (actionArea) {
+            actionArea.innerHTML = '<p>Discussion in progress. Voting will begin when the timer expires.</p>';
+        }
+        
+        // Hide vote buttons
+        document.querySelectorAll('.action-btn.vote-btn').forEach(btn => {
+            btn.style.display = 'none';
+        });
+    }
+
+    function enableVotingMode() {
+        // Code for enabling voting mode
+        const chatInputArea = document.getElementById('chatInputArea');
+        if (chatInputArea) {
+            chatInputArea.classList.add('chat-input-disabled');
+        }
+        
+        const messageInput = document.getElementById('messageInput');
+        if (messageInput) {
+            messageInput.disabled = true;
+        }
+        
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+        if (sendMessageBtn) {
+            sendMessageBtn.disabled = true;
+        }
+        
+        // Show voting instructions
+        const actionArea = document.getElementById('actionArea');
+        if (actionArea) {
+            actionArea.innerHTML = '<p class="voting-active">Discussion has ended. Cast your vote.</p>';
+        }
+        
+        // Show vote buttons for alive players
+        document.querySelectorAll('.action-btn.vote-btn').forEach(btn => {
+            const targetName = btn.getAttribute('data-target');
+            const isAlive = !btn.closest('.player-info-row')?.classList.contains('player-dead');
+            if (targetName !== state.playerName && isAlive) {
+                btn.style.display = 'inline-block';
+                
+                btn.disabled = false;
+                btn.classList.remove('action-selected');
+                btn.classList.remove('revote-btn');
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+        
+        const feedbackMsg = document.querySelector('.action-feedback');
+        if (feedbackMsg) {
+            feedbackMsg.remove();
+        }
+    }
+    
+    function updateLastVotedOut(votedOutPlayer) {
+        const container = document.getElementById('lastVotedOut');
+        if (!container) return;
+        
+        // Hide container if no player was voted out
+        if (!votedOutPlayer) {
+            container.style.display = 'none';
+            return;
+        }
+        
+        // Show the container
+        container.style.display = 'block';
+        container.innerHTML = '';
+        
+        const heading = document.createElement('h3');
+        heading.textContent = 'Last Voted Out';
+        container.appendChild(heading);
+        
+        const votedOutDiv = document.createElement('div');
+        votedOutDiv.className = 'voted-out-item';
+        
+        if (votedOutPlayer === state.playerName) {
+            votedOutDiv.classList.add('current-player');
+        }
+        
+        const emoji = document.createElement('span');
+        emoji.className = 'voted-out-emoji';
+        emoji.textContent = '🗳️';
+        
+        votedOutDiv.appendChild(emoji);
+        votedOutDiv.appendChild(document.createTextNode(votedOutPlayer));
+        container.appendChild(votedOutDiv);
+    }
+    
+    function updateRevoteUI(tiedCandidates) {
+        // Show revote message
+        const actionArea = document.getElementById('actionArea');
+        if (actionArea) {
+            actionArea.innerHTML = '';
+            const revoteMsg = document.createElement('p');
+            revoteMsg.className = 'revote-notice';
+            revoteMsg.innerHTML = `<strong>Vote tied!</strong> Please vote again between: 
+                                  <span class="tied-players">${tiedCandidates.join(', ')}</span>`;
+            actionArea.appendChild(revoteMsg);
+        }
+        
+        // Only show vote buttons for tied candidates
+        document.querySelectorAll('.vote-btn').forEach(btn => {
+            const targetName = btn.getAttribute('data-target');
+            if (tiedCandidates.includes(targetName)) {
+                btn.style.display = 'inline-block';
+                btn.classList.add('revote-btn');
+            } else {
+                btn.style.display = 'none';
+            }
+        });
     }
 });

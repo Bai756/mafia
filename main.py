@@ -9,6 +9,11 @@ from game import Game_Manager
 from player_classes import AI_Player, Human_Player
 import logging
 
+NIGHT_DURATION = 20
+DISCUSSION_DURATION = 10
+VOTING_DURATION = 20
+REVOTE_DISCUSSION_DURATION = 10
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(periodic_room_cleanup())
@@ -22,10 +27,8 @@ logger = logging.getLogger('uvicorn.error')
 logger.setLevel(logging.DEBUG)
 
 # TODO:
-# Fix game play, discussion and night phases repeatedly
-# Add timer for discussion phase
-# Add timer for night phase
-# Fix double deaths being displayed (probably due to both mafia targeting same player)
+# Fix phase when player is villager 
+# Add display in the screen that displays who died last night, who got voted out, and who won the game
 
 rooms = {}
 room_timers = {}
@@ -89,7 +92,7 @@ async def create_room(player_data: dict = None):
     creator_name = player_data.get("name") if player_data else None
     
     rooms[room_id] = {
-        'game': Game_Manager(),
+        'game': Game_Manager(use_model=False),
         'clients': {},
         'lobby_clients': {},
         'owner': creator_name
@@ -163,6 +166,12 @@ async def start_game(room_id: str):
     
     game.shuffle_roles()
     game.round_number = 1
+    game.sub_phase = "night_actions"
+
+    # testing purposes
+    for player in game.players:
+        if isinstance(player, Human_Player):
+            player.role = "Investigator"
     
     # Initialize AI player suspicions
     for player in game.players:
@@ -173,11 +182,58 @@ async def start_game(room_id: str):
         "type": "game_started",
         "room_id": room_id
     })
+
+    # Add system message about first night
+    if 1 not in game.discussion_history:
+        game.discussion_history[1] = []
+    game.discussion_history[1].append(("System", "The game has begun. Night has fallen."))
+    
+    # Start night phase timer immediately
+    await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
+    
+    # Process AI night actions
+    game.web_app_manager.process_ai_night_actions()
+    
+    await check_and_advance_night_phase(room_id)
+    
+    # Broadcast game state to all clients
+    await broadcast_to_room(room_id, dump_state(game))
     
     return {"status": "started"}
 
+async def check_and_advance_night_phase(room_id: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    
+    if game.get_game_phase() != "night":
+        return False
+        
+    # Check if any players with roles still need to act
+    doctors_need_to_act = [p.name for p in game.get_alive_players() if p.role == "Doctor" and not any(doc.name == p.name for doc, _ in game.last_protected)]
+    mafia_need_to_act = [p.name for p in game.get_alive_players() if p.role == "Mafia" and not any(maf.name == p.name for maf, _ in game.last_targeted)]
+    investigators_need_to_act = [p.name for p in game.get_alive_players() if p.role == "Investigator" and not any(inv.name == p.name for inv, _, _ in game.last_investigated)]
+    
+    all_doctors_acted = len(doctors_need_to_act) == 0
+    all_mafia_acted = len(mafia_need_to_act) == 0
+    all_investigators_acted = len(investigators_need_to_act) == 0
+    
+    # If all players with special roles have acted or only villagers remain
+    if all_doctors_acted and all_mafia_acted and all_investigators_acted:
+        # Cancel any running timer
+        if getattr(game, 'phase_timer', None):
+            game.phase_timer.cancel()
+            game.phase_timer = None
+            print("[TIMER] Night phase ended early - all required actions complete")
+        
+        # Advance to day phase
+        asyncio.create_task(advance_game_phase(room_id))
+        return True
+    
+    return False
+
 @app.post("/room/{room_id}/advance_phase")
 async def advance_game_phase(room_id: str):
+    success = True
     room = get_room_or_error(room_id)
     game = room['game']
     
@@ -185,35 +241,58 @@ async def advance_game_phase(room_id: str):
     current_phase = game.get_game_phase()
     
     # Advance the game phase
-    game.web_app_manager.try_advance()
+    phase_changed = game.web_app_manager.try_advance()
     
     # Get the new phase after advancing
     new_phase = game.get_game_phase()
     
-    # If we've just entered night phase, process AI night actions
+    # If we've just entered night phase
     if new_phase == "night" and current_phase == "day":
-        print("[DEBUG] Night phase started, processing AI actions")
+        # Add system message about night falling
+        round_num = game.round_number
+        if round_num not in game.discussion_history:
+            game.discussion_history[round_num] = []
+        game.discussion_history[round_num].append(("System", "Night has fallen. Everyone returns to their homes."))
+            
+        await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
+        
+        # Process AI night actions
         ai_actions_taken = game.web_app_manager.process_ai_night_actions()
         
-        if ai_actions_taken:
-            print("[DEBUG] AI actions taken, broadcasting updated state")
-            await broadcast_to_room(room_id, dump_state(game))
+        await check_and_advance_night_phase(room_id)
     
-    # If we've just entered day phase, set up the discussion
+    # If we've just entered day phase
     elif new_phase == "day" and current_phase == "night":
+        # Start with discussion sub-phase
+        game.sub_phase = "discussion"
+        
+        # Ensure discussion history exists for the new round
+        round_num = game.round_number
+        if round_num not in game.discussion_history:
+            game.discussion_history[round_num] = []
+            
+        # Add system message about day beginning
+        game.discussion_history[round_num].append(("System", f"Day {game.round_number} has begun. The discussion phase will last for {DISCUSSION_DURATION//60} minutes."))
+        
+        # Set up the discussion
         alive_players = game.get_alive_players()
         if alive_players:
             game.current_speaker = alive_players[0].name
             
-            # If the first speaker is AI, trigger their turn
+            # If first speaker is AI, trigger their turn
             first_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
-            if first_speaker and isinstance(first_speaker, AI_Player):
+            if first_speaker and isinstance(first_speaker, AI_Player) and first_speaker.is_alive:
+                await asyncio.sleep(2)
                 asyncio.create_task(process_ai_turn(game, room_id))
-    
+        
+        # Start discussion timer
+        await start_phase_timer(room_id, DISCUSSION_DURATION, "day", "discussion")
+    else:
+        success = False
     # Broadcast updated state
     await broadcast_to_room(room_id, dump_state(game))
     
-    return {"status": "advanced", "phase": new_phase}
+    return {"status": "advanced" if success else "failed", "phase": new_phase, "sub_phase": game.sub_phase}
 
 @app.post("/room/{room_id}/auth")
 def authenticate_player(room_id: str, auth_request: dict):
@@ -314,16 +393,20 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
     await asyncio.sleep(2)
     
     ai_message = current_speaker.generate_argument(game)
+    if not ai_message:
+        ai_message = "Message not generated correctly."
     
-    # Add the message to the discussion
-    if game.web_app_manager.add_message(current_speaker_name, ai_message):
+    # Add the message to the discussion    
+    result = game.web_app_manager.add_message(current_speaker_name, ai_message)
+    
+    if result:
         await broadcast_to_room(room_id, dump_state(game))
         
-        # Check if the next speaker is also AI, and if so, process their turn
-        if game.current_speaker:
+        # If there's a new speaker and it's an AI, schedule their turn
+        if game.current_speaker and game.current_speaker != current_speaker_name:
             next_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
             if next_speaker and isinstance(next_speaker, AI_Player) and next_speaker.is_alive:
-                # Schedule the next AI turn
+                await asyncio.sleep(2)
                 asyncio.create_task(process_ai_turn(game, room_id))
 
 def dump_state(game: Game_Manager, player_name: str = None):
@@ -331,11 +414,15 @@ def dump_state(game: Game_Manager, player_name: str = None):
         "phase": game.get_game_phase(),
         "round": game.round_number,
         "alive": [p.name for p in game.get_alive_players()],
-        "last_deaths": [p.name for p in game.last_deaths],
+        "last_deaths": list(dict.fromkeys(p.name for p in game.last_deaths)),
+        "last_voted_out": game.last_voted_out,
         "discussion": game.discussion_history.get(game.round_number, []),
         "eliminated": [p.name for p in game.players if not p.is_alive],
         "game_status": game.get_game_status(),
-        "current_speaker": game.current_speaker
+        "current_speaker": game.current_speaker,
+        "sub_phase": getattr(game, "sub_phase", None),
+        "tied_candidates": game.tied_candidates if hasattr(game, 'tied_candidates') else [],
+        "mafia_count": len([p for p in game.get_alive_players() if p.role == "Mafia"])
     }
     
     # Add role-specific information if player is specified
@@ -348,8 +435,7 @@ def dump_state(game: Game_Manager, player_name: str = None):
             
             # For mafia, show who other mafia members are
             if player.role == "Mafia":
-                state["fellow_mafia"] = [p.name for p in game.players 
-                                         if p.role == "Mafia" and p.name != player_name]
+                state["fellow_mafia"] = [p.name for p in game.players if p.role == "Mafia" and p.name != player_name]
     
     return state
 
@@ -376,11 +462,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, player_name: st
             data = await websocket.receive_json()
             result = handle_action(room['game'], player_name, data)
             
-            await broadcast_to_room(room_id, dump_state(room['game']))
-            
-            # If the phase advanced automatically, broadcast again with a slight delay
-            if result.get("phase_advanced"):
-                await asyncio.sleep(0.5)  # Small delay to ensure state is fully updated
+            if not result.get("phase_advanced"):
                 await broadcast_to_room(room_id, dump_state(room['game']))
 
     except WebSocketDisconnect:
@@ -437,10 +519,27 @@ async def broadcast_to_room(room_id: str, message: dict):
     if room_id not in rooms:
         return
         
-    clients = rooms[room_id].get('clients', {})
-    for ws in list(clients.values()):
+    room = rooms[room_id]
+    game = room['game']
+    clients = room.get('clients', {})
+    
+    # For each connected player, send them a personalized state
+    for player_name, ws in list(clients.items()):
         try:
-            await ws.send_json(message)
+            # Create a personalized copy of the message for this specific player
+            if isinstance(message, dict) and message.get("phase") is not None:
+                # This appears to be a game state message, so personalize it
+                personalized_msg = dump_state(game, player_name)
+                
+                # Copy any additional fields that were in the original message
+                for key, value in message.items():
+                    if key not in personalized_msg:
+                        personalized_msg[key] = value
+                
+                await ws.send_json(personalized_msg)
+            else:
+                # For non-game state messages, send as is
+                await ws.send_json(message)
         except Exception:
             pass
 
@@ -518,6 +617,11 @@ async def delayed_room_cleanup(room_id: str, delay_seconds: int):
         logger.info(f"Cleanup task for room {room_id} was cancelled")
 
 def handle_action(game: Game_Manager, player_name: str, action_data: dict):
+    for rm_id, room in rooms.items():
+        if room['game'] is game:
+            room_id = rm_id
+            break
+
     action_type = action_data.get("action")
     target_name = action_data.get("target")
     
@@ -525,11 +629,23 @@ def handle_action(game: Game_Manager, player_name: str, action_data: dict):
         message = action_data.get("message")
         if message:
             success = game.web_app_manager.add_message(player_name, message)
+            
+            if success and game.current_speaker:
+                # Find the next speaker
+                next_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
+                
+                # If next speaker is AI, trigger their turn
+                if next_speaker and isinstance(next_speaker, AI_Player) and next_speaker.is_alive:
+                    for room_id, room in rooms.items():
+                        if room['game'] is game:
+                            asyncio.create_task(process_ai_turn(game, room_id))
+                            break
+            
             return {"success": success}
-    
+
     if not action_type or not target_name:
         return {"error": "Invalid action data"}
-    
+
     current_phase = game.get_game_phase()
     phase_advanced = False
     
@@ -549,38 +665,346 @@ def handle_action(game: Game_Manager, player_name: str, action_data: dict):
         else:
             return {"error": "Invalid action for your role"}
         
-        # Check if all night actions are complete and we can advance
-        print("[DEBUG] Checking if night phase can be auto-advanced after action")
-        phase_advanced = game.web_app_manager.try_advance()
-        
-        # If phase advanced, schedule AI turn for first speaker if they're AI
-        if phase_advanced and game.get_game_phase() == "day":
-            alive_players = game.get_alive_players()
-            if alive_players:
-                game.current_speaker = alive_players[0].name
-                first_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
-                if first_speaker and isinstance(first_speaker, AI_Player):
-                    for room_id, room in rooms.items():
-                        if room['game'] is game:
-                            asyncio.create_task(process_ai_turn(game, room_id))
-                            break
-        
+        # Check if all required night actions are complete
+        doctors_need_to_act = [p.name for p in game.get_alive_players() if p.role == "Doctor" and not any(doc.name == p.name for doc, _ in game.last_protected)]
+        mafia_need_to_act = [p.name for p in game.get_alive_players() if p.role == "Mafia" and not any(maf.name == p.name for maf, _ in game.last_targeted)]
+        investigators_need_to_act = [p.name for p in game.get_alive_players() if p.role == "Investigator" and not any(inv.name == p.name for inv, _, _ in game.last_investigated)]
+        all_doctors_acted = len(doctors_need_to_act) == 0
+        all_mafia_acted = len(mafia_need_to_act) == 0
+        all_investigators_acted = len(investigators_need_to_act) == 0
+
+        # If all required actions are complete, advance to day phase
+        if all_doctors_acted and all_mafia_acted and all_investigators_acted:
+            # Find the room ID for this game
+            for room_id, room in rooms.items():
+                if room['game'] is game:
+                    # Create task to advance the game phase
+                    asyncio.create_task(advance_game_phase(room_id))
+                    phase_advanced = True
+                    break
+    
         return {"success": True, "phase_advanced": phase_advanced}
     
     # Handle day actions
-    elif action_type == "vote" and current_phase == "day":
+    elif current_phase == "day" and action_type == "vote":
+        # Check if we're in a revote and the target is valid
+        if hasattr(game, 'tied_candidates') and game.tied_candidates:
+            if target_name not in game.tied_candidates:
+                return {"success": False, "error": "You must vote for one of the tied candidates"}
+        
         success = game.web_app_manager.vote_action(player_name, target_name)
         if success:
-            print("[DEBUG] Checking if day phase can be auto-advanced after vote")
-            phase_advanced = game.web_app_manager.try_advance()
+            # Check if voting is complete
+            all_voted = len(game.votes) >= len([p for p in game.players if p.is_alive])
             
-            # If phase advanced to night, process AI night actions
-            if phase_advanced and game.get_game_phase() == "night":
-                print("[DEBUG] Auto-processing AI night actions after day phase ended")
-                game.web_app_manager.process_ai_night_actions()
+            if all_voted:
+                if getattr(game, 'phase_timer', None):
+                    game.phase_timer.cancel()
+                    game.phase_timer = None
+                    print(f"[TIMER] Voting phase ended early - all players have voted")
                 
+                if game.sub_phase == "revote_voting":
+                    asyncio.create_task(handle_revoting_timeout(room_id))
+                    phase_advanced = True
+                else:
+                    asyncio.create_task(handle_voting_timeout(room_id))
+                    phase_advanced = True
+            
         return {"success": success, "phase_advanced": phase_advanced}
     
+    return {"success": False, "error": "Invalid action for current phase"}
+    
+async def start_phase_timer(room_id: str, duration: int, phase: str, sub_phase: str = None):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    
+    # Cancel and clear any previous timer
+    if getattr(game, 'phase_timer', None):
+        game.phase_timer.cancel()
+        game.phase_timer = None
+    
+    # Set the sub_phase upfront
+    game.sub_phase = sub_phase or (
+        "discussion" if phase == "day" else
+        "night_actions"
+    )
+    
+    # Broadcast initial phase + timer
+    await broadcast_to_room(room_id, {
+        **dump_state(game),
+        "timer": duration,
+        "sub_phase": game.sub_phase
+    })
+    
+    # Launch the background countdown
+    game.phase_timer = asyncio.create_task(phase_timer_task(room_id, duration, phase, game.sub_phase))
+
+async def phase_timer_task(room_id: str, duration: int, phase: str, sub_phase: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    
+    print(f"[TIMER] Starting {duration}s countdown for {phase}/{sub_phase}")
+    
+    try:
+        # Countdown with updates
+        for remaining in range(duration, 0, -1):
+            await asyncio.sleep(1)
+            
+            if remaining % 5 == 0 or remaining <= 3:
+                await broadcast_to_room(room_id, {
+                    **dump_state(game),
+                    "timer": remaining,
+                    "sub_phase": game.sub_phase
+                })
+        
+        # Final zero broadcast
+        await broadcast_to_room(room_id, {
+            **dump_state(game),
+            "timer": 0,
+            "sub_phase": game.sub_phase
+        })
+        
+    finally:
+        game.phase_timer = None
+    
+    print(f"[TIMER] Phase timer expired for {phase}/{sub_phase}")
+    
+    # Handle phase transitions based on current phase and sub_phase
+    if phase == "night":
+        print("[TIMER] Night phase ended, handling timeout")
+        await handle_night_timeout(room_id)
+    elif phase == "day":
+        if sub_phase == "discussion":
+            print("[TIMER] Day discussion ended, starting voting phase")
+            await start_voting_phase(room_id)
+        elif sub_phase == "voting":
+            print("[TIMER] Voting ended, handling timeout")
+            await handle_voting_timeout(room_id)
+        elif sub_phase == "revote_discussion":
+            print("[TIMER] Revote discussion ended, starting revote voting")
+            await start_revote_voting_phase(room_id)
+        elif sub_phase == "revote_voting":
+            print("[TIMER] Revote voting ended, handling timeout")
+            await handle_revoting_timeout(room_id)
+
+async def handle_night_timeout(room_id: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    
+    # For each player who hasn't acted, select a random action
+    for player in game.get_alive_players():
+        if player.role not in ["Mafia", "Doctor", "Investigator"]:
+            continue
+            
+        # Check if this player has already acted
+        has_acted = False
+        
+        if player.role == "Mafia":
+            has_acted = any(maf.name == player.name for maf, _ in game.last_targeted)
+        elif player.role == "Doctor":
+            has_acted = any(doc.name == player.name for doc, _ in game.last_protected)
+        elif player.role == "Investigator":
+            has_acted = any(inv.name == player.name for inv, _, _ in game.last_investigated)
+        
+        # If they haven't acted, make them act randomly
+        if not has_acted:
+            possible_targets = [p.name for p in game.get_alive_players() if p.name != player.name]
+            
+            if possible_targets:
+                target = random.choice(possible_targets)
+                
+                # Apply action based on role
+                if player.role == "Mafia":
+                    game.web_app_manager.mafia_action(player.name, target)
+                elif player.role == "Doctor":
+                    game.web_app_manager.doctor_action(player.name, target)
+                elif player.role == "Investigator":
+                    game.web_app_manager.investigator_action(player.name, target)
+    
+    await advance_game_phase(room_id)
+
+async def make_ai_players_vote(room_id: str, is_revote: bool = False):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    
+    ai_players = [p for p in game.get_alive_players() if isinstance(p, AI_Player)]
+    for ai_player in ai_players:
+        if ai_player.name in game.votes:
+            continue
+            
+        valid_targets = [p for p in game.get_alive_players() if p != ai_player]
+        
+        if is_revote and hasattr(game, 'tied_candidates'):
+            valid_targets = [p for p in valid_targets if p.name in game.tied_candidates]
+        
+        if valid_targets:
+            target = ai_player.vote(game, valid_targets)
+            if target:
+                game.web_app_manager.vote_action(ai_player.name, target.name)
+    
+    await broadcast_to_room(room_id, dump_state(game))
+
+async def start_voting_phase(room_id: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    game.sub_phase = "voting"
+    
+    game.current_speaker = None
+    
+    round_num = game.round_number
+    if round_num not in game.discussion_history:
+        game.discussion_history[round_num] = []
+    game.discussion_history[round_num].append(("System", "Discussion time is over. Voting has begun."))
+    
+    game.votes = {}
+    
+    # AI players vote immediately
+    await make_ai_players_vote(room_id, is_revote=False)
+    
+    # Start the timer with the correct sub_phase
+    await start_phase_timer(room_id, VOTING_DURATION, "day", "voting")
+
+async def handle_voting_timeout(room_id: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    
+    # For each player who hasn't voted, cast a random vote
+    for player in game.get_alive_players():
+        if player.name not in game.votes:
+            possible_targets = [p.name for p in game.get_alive_players() if p.name != player.name]
+            
+            if possible_targets:
+                target = random.choice(possible_targets)
+                game.web_app_manager.vote_action(player.name, target)
+    
+    resolved = game.web_app_manager._resolve_day_votes()
+    
+    if resolved:
+        game.is_night = True
+        game.round_number += 1
+        
+        # Reset for next round
+        game.last_protected = []
+        game.last_targeted = []
+        game.last_deaths = []
+        
+        # Add night beginning message
+        round_num = game.round_number
+        if round_num not in game.discussion_history:
+            game.discussion_history[round_num] = []
+        game.discussion_history[round_num].append(("System", "Night has fallen. Everyone returns to their homes."))
+        
+        await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
+        
+        game.web_app_manager.process_ai_night_actions()
+        
+        await check_and_advance_night_phase(room_id)
+    else:
+        # Go to revote discussion
+        await start_revote_discussion_phase(room_id)
+    
+    # Broadcast updated state
+    await broadcast_to_room(room_id, dump_state(game))
+
+async def handle_revoting_timeout(room_id: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    
+    for player in game.get_alive_players():
+        if player.name not in game.votes:
+            possible_targets = [name for name in game.tied_candidates if name != player.name]
+            
+            if possible_targets:
+                target = random.choice(possible_targets)
+                game.web_app_manager.vote_action(player.name, target)
+    
+    resolved = game.web_app_manager._resolve_day_votes()
+    
+    game.is_night = True
+    game.round_number += 1
+    
+    # Reset for next round
+    game.last_protected = []
+    game.last_targeted = []
+    game.last_deaths = []
+    
+    # Add night beginning message
+    round_num = game.round_number
+    if round_num not in game.discussion_history:
+        game.discussion_history[round_num] = []
+        
+    if not resolved:
+        # Add message about tied vote if needed
+        game.discussion_history[round_num].append(
+            ("System", "Voting remains tied. No one will be eliminated today.")
+        )
+        
+        # Clear tied candidates and votes
+        game.tied_candidates = []
+        game.votes = {}
+        
+    game.discussion_history[round_num].append(
+        ("System", "Night has fallen. Everyone returns to their homes.")
+    )
+    
+    # Start night timer directly
+    await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
+    
+    # Process AI night actions
+    game.web_app_manager.process_ai_night_actions()
+    
+    await check_and_advance_night_phase(room_id)
+    
+    # Broadcast updated state
+    await broadcast_to_room(room_id, dump_state(game))
+
+async def start_revote_discussion_phase(room_id: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    game.sub_phase = "revote_discussion"
+    
+    # Set the first speaker
+    alive_players = game.get_alive_players()
+    if alive_players:
+        game.current_speaker = alive_players[0].name
+    
+    round_num = game.round_number
+    if round_num not in game.discussion_history:
+        game.discussion_history[round_num] = []
+    game.discussion_history[round_num].append(("System", "Brief discussion before revote has begun."))
+    
+    await broadcast_to_room(room_id, {
+        **dump_state(game),
+        "sub_phase": "revote_discussion",
+        "timer": REVOTE_DISCUSSION_DURATION
+    })
+    
+    if game.current_speaker:
+        first_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
+        if first_speaker and isinstance(first_speaker, AI_Player) and first_speaker.is_alive:
+            await asyncio.sleep(1)
+            asyncio.create_task(process_ai_turn(game, room_id))
+    
+    await start_phase_timer(room_id, REVOTE_DISCUSSION_DURATION, "day", "revote_discussion")
+
+async def start_revote_voting_phase(room_id: str):
+    room = get_room_or_error(room_id)
+    game = room['game']
+    game.sub_phase = "revote_voting"
+    
+    game.current_speaker = None
+    
+    round_num = game.round_number
+    if round_num not in game.discussion_history:
+        game.discussion_history[round_num] = []
+    game.discussion_history[round_num].append(("System", "Discussion is over. Please revote now."))
+    
+    game.votes = {}
+    
+    await make_ai_players_vote(room_id, is_revote=True)
+
+    await start_phase_timer(room_id, VOTING_DURATION, "day", "revote_voting")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
