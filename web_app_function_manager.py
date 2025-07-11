@@ -118,7 +118,7 @@ class WebAppFunctionManager:
                 game_status = self.get_game_status()
                 if game_status["is_over"]:
                     self.game.discussion_history[round_num].append(("System", f"Game over! {game_status['winner']} win!"))
-                
+
                 return True
         else:
             # Day phase - check if everyone has voted
@@ -317,8 +317,5 @@ class WebAppFunctionManager:
                         if success:
                             player.update_suspicion_investigation(target, is_mafia)
                             ai_actions_taken = True
-
-        if ai_actions_taken:
-            self.try_advance()
             
         return ai_actions_taken

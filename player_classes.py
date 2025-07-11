@@ -189,20 +189,38 @@ class AI_Player(Player):
         # Create memory of recent actions based on role
         mem = ""
         if self.role == "Doctor":
-            protected = next((p for doctor, p in game_manager.last_protected if doctor.name == self.name))
-            status = 'survived' if protected.is_alive else 'died'
-            mem = f"- You protected: {protected.name} ({status})"
+            try:
+                # Find who this doctor protected, if anyone
+                doctor_actions = [(doctor, p) for doctor, p in game_manager.last_protected if doctor.name == self.name]
+                if doctor_actions:
+                    protected = doctor_actions[0][1]  # Get the protected player
+                    status = 'survived' if protected.is_alive else 'died'
+                    mem = f"- You protected: {protected.name} ({status})"
+            except (AttributeError, IndexError):
+                mem = "- You haven't protected anyone yet."
 
         elif self.role == "Investigator":
-            match = next(((name, is_mafia) for investigator, name, is_mafia in game_manager.last_investigated if investigator.name == self.name))
-            name, is_mafia = match
-            result = "Mafia" if is_mafia else "not Mafia"
-            mem += f"- You investigated: {name} ({result})"
+            try:
+                # Similar defensive coding for investigator
+                investigations = [(name, is_mafia) for investigator, name, is_mafia 
+                                 in game_manager.last_investigated if investigator.name == self.name]
+                if investigations:
+                    name, is_mafia = investigations[0]
+                    result = "Mafia" if is_mafia else "not Mafia"
+                    mem += f"- You investigated: {name} ({result})"
+            except (AttributeError, IndexError):
+                mem += "- You haven't investigated anyone yet."
 
         elif self.role == "Mafia":
-            kill_names = [p.name for _, p in game_manager.last_targeted]
-            mem += "- Mafia kills last night: " + ', '.join(kill_names)
-
+            try:
+                # Be defensive here too
+                if hasattr(game_manager, 'last_targeted') and game_manager.last_targeted:
+                    kill_names = [p.name for _, p in game_manager.last_targeted]
+                    if kill_names:
+                        mem += "- Mafia kills last night: " + ', '.join(kill_names)
+            except AttributeError:
+                mem += "- No mafia kills recorded yet."
+    
         prompt = f"""
             You are {self.name}, a {self.role} in a text-based Mafia game.
             {f"The other mafia members are {mafia_names}." if self.role == "Mafia" else ""}
