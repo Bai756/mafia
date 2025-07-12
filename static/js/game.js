@@ -245,13 +245,15 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log("Received data:", event.data);
             const gameState = JSON.parse(event.data);
             
-            // Debug
-            if (discussionElements.discussionFeed) {
-                const debugMsg = document.createElement('div');
-                debugMsg.style.color = 'blue';
-                debugMsg.style.fontSize = '11px';
-                debugMsg.textContent = `State update: Phase=${gameState.phase}, Round=${gameState.round}, Speaker=${gameState.current_speaker}`;
-                discussionElements.discussionFeed.appendChild(debugMsg);
+            // Check if player is now dead
+            if (state.isAlive && gameState.eliminated && gameState.eliminated.includes(state.playerName)) {
+                state.isAlive = false;
+                
+                // Show death notification
+                showDeathNotification();
+                
+                // Update role info to show dead status
+                updateRoleInfo(state.playerRole, false);
             }
             
             // Update game state
@@ -284,9 +286,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Game UI Updates
-
     function updateGameDisplay(gameState) {
-        // Update phase display
+        if (gameState.game_status && gameState.game_status.is_over) {
+            showGameOver(gameState.game_status);
+            return; 
+        }
+        
+        updateLastDeaths(gameState.last_deaths);
+
+        updateLastVotedOut(gameState.last_voted_out, gameState);
+        
         if (statusElements.phaseDisplay) {
             statusElements.phaseDisplay.textContent = gameState.phase === 'day' ? 'Day' : 'Night';
         }
@@ -310,26 +319,23 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update discussion feed
         updateDiscussionFeed(gameState.discussion);
         
-        // Show deaths from last round
-        updateLastDeaths(gameState.last_deaths);
-        
-        // Show last voted out player
-        updateLastVotedOut(gameState.last_voted_out);
         
         // Update chat input availability based on turn
         updateChatInput(gameState);
         
-        // Check for game over
-        if (gameState.game_status && gameState.game_status.is_over) {
-            showGameOver(gameState.game_status);
-        }
         
         // Update action area instructions
         updateActionArea(gameState.phase);
         
-        // Update investigation results if they're available
-        if (gameState.investigation_results && gameState.investigation_results.length > 0) {
+        // Update investigation results if they're available and player is investigator
+        if (state.playerRole === 'Investigator' && gameState.investigation_results && 
+            gameState.investigation_results.length > 0) {
             updateInvestigationResults(gameState.investigation_results);
+        } else {
+            const container = document.getElementById('investigationResults');
+            if (container) {
+                container.style.display = 'none';
+            }
         }
         
         // Update timer display if present
@@ -421,15 +427,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 playerInfoDiv.classList.add('player-dead');
             }
             
+            // Add player name span
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'player-name';
+            
             // Highlight fellow mafia members if the current player is mafia
             if (state.playerRole === 'Mafia' && state.fellowMafia && 
                 state.fellowMafia.includes(player.name)) {
                 playerInfoDiv.classList.add('fellow-mafia');
+                
+                if (!nameSpan.querySelector('.mafia-indicator')) {
+                    const mafiaIndicator = document.createElement('span');
+                    mafiaIndicator.className = 'mafia-indicator';
+                }
             }
-            
-            // Add player name span
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'player-name';
             
             // Add death indicator for dead players
             if (player.isDead) {
@@ -954,10 +965,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Show the investigation result with appropriate styling
             const resultBadge = document.createElement('span');
-            resultBadge.className = `result ${result.isMafia ? 'mafia' : 'not-mafia'}`;
-            resultBadge.textContent = result.isMafia ? 'Mafia' : 'Not Mafia';
+            resultBadge.className = `result ${result.is_mafia ? 'mafia' : 'not-mafia'}`;
+            resultBadge.textContent = result.is_mafia ? 'Mafia' : 'Not Mafia';
             resultDiv.appendChild(resultBadge);
-            
             resultsList.appendChild(resultDiv);
         });
         
@@ -1031,7 +1041,24 @@ document.addEventListener('DOMContentLoaded', function() {
             timerElement.className = `phase-timer day-timer ${subPhase}-timer`;
         }
         
-        // Add warning style when time is running low (less than 20 seconds)
+        if (seconds < 10) {
+            timerElement.classList.add('timer-warning');
+        } else {
+            timerElement.classList.remove('timer-warning');
+        }
+        
+        if (phase === 'night') {
+            timerElement.className = 'phase-timer night-timer';
+        } else if (subPhase === 'discussion') {
+            timerElement.className = 'phase-timer day-timer discussion-timer';
+        } else if (subPhase === 'voting') {
+            timerElement.className = 'phase-timer day-timer voting-timer';
+        } else if (subPhase === 'revote_discussion') {
+            timerElement.className = 'phase-timer day-timer revote_discussion-timer';
+        } else if (subPhase === 'revote_voting') {
+            timerElement.className = 'phase-timer day-timer revote_voting-timer';
+        }
+        
         if (seconds < 10) {
             timerElement.classList.add('timer-warning');
         }
@@ -1094,7 +1121,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    function updateLastVotedOut(votedOutPlayer) {
+    function updateLastVotedOut(votedOutPlayer, gameState) {
         const container = document.getElementById('lastVotedOut');
         if (!container) return;
         
@@ -1122,9 +1149,22 @@ document.addEventListener('DOMContentLoaded', function() {
         const emoji = document.createElement('span');
         emoji.className = 'voted-out-emoji';
         emoji.textContent = '🗳️';
-        
         votedOutDiv.appendChild(emoji);
-        votedOutDiv.appendChild(document.createTextNode(votedOutPlayer));
+        
+        // Player name in a wrapper
+        const nameWrapper = document.createElement('div');
+        nameWrapper.className = 'voted-out-name';
+        nameWrapper.textContent = votedOutPlayer;
+        votedOutDiv.appendChild(nameWrapper);
+        
+        // Check if this player was Mafia
+        const isMafia = (gameState.eliminated_roles && gameState.eliminated_roles[votedOutPlayer] === "Mafia");
+
+        const roleBadge = document.createElement('span');
+        roleBadge.className = `role-badge ${isMafia ? 'mafia-badge' : 'villager-badge'}`;
+        roleBadge.textContent = isMafia ? 'Mafia' : 'Not Mafia';
+        votedOutDiv.appendChild(roleBadge);
+        
         container.appendChild(votedOutDiv);
     }
     
@@ -1150,5 +1190,60 @@ document.addEventListener('DOMContentLoaded', function() {
                 btn.style.display = 'none';
             }
         });
+    }
+    
+    // New function to show death notification
+    function showDeathNotification() {
+        // Create overlay for death notification
+        const deathOverlay = document.createElement('div');
+        deathOverlay.className = 'death-overlay';
+        
+        const deathMessage = document.createElement('div');
+        deathMessage.className = 'death-message';
+        
+        // Create death announcement
+        const heading = document.createElement('h2');
+        heading.textContent = 'You Are Dead';
+        
+        const deathIcon = document.createElement('div');
+        deathIcon.className = 'death-icon';
+        deathIcon.textContent = '☠️';
+        
+        const message = document.createElement('p');
+        message.textContent = 'You have been eliminated from the game.';
+        message.className = 'death-text';
+        
+        const subMessage = document.createElement('p');
+        subMessage.textContent = 'You may continue watching the game but cannot participate.';
+        subMessage.className = 'death-subtext';
+        
+        const continueBtn = document.createElement('button');
+        continueBtn.textContent = 'Continue Watching';
+        continueBtn.className = 'btn btn-primary';
+        
+        setTimeout(() => {
+            deathOverlay.classList.add('show-overlay');
+        }, 10);
+        
+        continueBtn.onclick = () => {
+            deathOverlay.classList.remove('show-overlay');
+            deathOverlay.classList.add('hide-overlay');
+            setTimeout(() => {
+                if (deathOverlay.parentNode) {
+                    deathOverlay.parentNode.removeChild(deathOverlay);
+                }
+            }, 500);
+        };
+        
+        deathMessage.appendChild(heading);
+        deathMessage.appendChild(deathIcon);
+        deathMessage.appendChild(message);
+        deathMessage.appendChild(subMessage);
+        deathMessage.appendChild(continueBtn);
+        deathOverlay.appendChild(deathMessage);
+        
+        document.body.appendChild(deathOverlay);
+        
+        document.body.classList.add('player-dead');
     }
 });

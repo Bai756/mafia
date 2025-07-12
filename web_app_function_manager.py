@@ -179,8 +179,8 @@ class WebAppFunctionManager:
         if not hasattr(self.game, 'revote_count'):
             self.game.revote_count = 0
         
-        # Check if this is already a revote
-        is_revote = self.game.sub_phase in ["revote_voting", "revote_discussion"]
+        # Check if this is a revote voting phase
+        is_revote = self.game.sub_phase == "revote_voting"
         if is_revote:
             self.game.revote_count += 1
         
@@ -210,14 +210,14 @@ class WebAppFunctionManager:
             alive_player_count = len(self.game.get_alive_players())
             all_tied = len(most_voted) == alive_player_count
             
-            if self.game.revote_count >= 2 or all_tied:
+            if self.game.revote_count >= 1 or all_tied:
                 # Too many revotes or all players tied - skip elimination
                 round_num = self.game.round_number
                 if round_num in self.game.discussion_history:
                     if all_tied:
                         msg = "The vote was tied between everyone! No one will be eliminated today."
                     else:
-                        msg = "Voting remains tied after multiple revotes. No one will be eliminated today."
+                        msg = "Voting remains tied after revoting. No one will be eliminated today."
                         
                     self.game.discussion_history[round_num].append(("System", msg))
                 
@@ -225,6 +225,7 @@ class WebAppFunctionManager:
                 self.game.votes = {}
                 self.game.tied_candidates = []
                 self.game.revote_count = 0
+                self.game.is_night = True
                 return True
             else:
                 # Set up for revote discussion phase

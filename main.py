@@ -26,9 +26,6 @@ templates = Jinja2Templates(directory="templates")
 logger = logging.getLogger('uvicorn.error')
 logger.setLevel(logging.DEBUG)
 
-# TODO:
-# Add display in the screen that displays who died last night, who got voted out, and who won the game
-
 rooms = {}
 room_timers = {}
 
@@ -170,7 +167,7 @@ async def start_game(room_id: str):
     # testing purposes
     for player in game.players:
         if isinstance(player, Human_Player):
-            player.role = "Villager"
+            player.role = "Investigator"
     
     # Initialize AI player suspicions
     for player in game.players:
@@ -218,6 +215,8 @@ async def advance_game_phase(room_id: str):
     
     # If we're transitioning to a new round (after revote_voting)
     if current_sub_phase == "revote_voting" and new_phase == "night":
+        print("Transitioning to night phase after revote voting.")
+        game.is_night = True
         game.round_number += 1
         
         # Reset for next round
@@ -238,13 +237,13 @@ async def advance_game_phase(room_id: str):
         # Start night phase
         await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
         
-        # Process AI night actions
         game.web_app_manager.process_ai_night_actions()
     
     # If we've just entered night phase
     elif new_phase == "night" and current_phase == "day":
+        print("Transitioning to night phase from day phase.")
         game.is_night = True
-        
+
         # Add system message about night falling
         round_num = game.round_number
         if round_num not in game.discussion_history:
@@ -255,12 +254,10 @@ async def advance_game_phase(room_id: str):
             
         await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
         
-        # Process AI night actions
         game.web_app_manager.process_ai_night_actions()
         
     # If we've just entered day phase
     elif new_phase == "day" and current_phase == "night":
-        # Start with discussion sub-phase
         game.sub_phase = "discussion"
         
         # Ensure discussion history exists for the new round
@@ -289,7 +286,6 @@ async def advance_game_phase(room_id: str):
     else:
         success = False
         
-    # Broadcast updated state
     await broadcast_to_room(room_id, dump_state(game))
     
     return {"status": "advanced" if success else "failed", "phase": new_phase, "sub_phase": game.sub_phase}
@@ -418,6 +414,7 @@ def dump_state(game: Game_Manager, player_name: str = None):
         "last_voted_out": game.last_voted_out,
         "discussion": game.discussion_history.get(game.round_number, []),
         "eliminated": [p.name for p in game.players if not p.is_alive],
+        "eliminated_roles": {p.name: p.role for p in game.players if not p.is_alive},
         "game_status": game.get_game_status(),
         "current_speaker": game.current_speaker,
         "sub_phase": getattr(game, "sub_phase", None),
@@ -879,15 +876,13 @@ async def handle_voting_timeout(room_id: str):
     
     resolved = game.web_app_manager._resolve_day_votes()
     
+    await broadcast_to_room(room_id, dump_state(game))
+
     if resolved:
         game.is_night = True
         await advance_game_phase(room_id)
     else:
-        # Go to revote discussion
         await start_revote_discussion_phase(room_id)
-    
-    # Broadcast updated state
-    await broadcast_to_room(room_id, dump_state(game))
 
 async def handle_revoting_timeout(room_id: str):
     room = get_room_or_error(room_id)
@@ -903,23 +898,38 @@ async def handle_revoting_timeout(room_id: str):
     
     resolved = game.web_app_manager._resolve_day_votes()
     
-    # Add message if vote remains tied
-    if not resolved:
-        round_num = game.round_number
-        if round_num not in game.discussion_history:
-            game.discussion_history[round_num] = []
-            
-        game.discussion_history[round_num].append(
-            ("System", "Voting remains tied. No one will be eliminated today.")
-        )
-        
-        # Clear tied candidates and votes
-        game.tied_candidates = []
-        game.votes = {}
+    # Manually transition to night phase because revoting handling is different
+    game.tied_candidates = []
+    game.votes = {}
     
     game.is_night = True
+    game.round_number += 1
     
-    await advance_game_phase(room_id)
+    game.last_protected = []
+    game.last_targeted = []
+    game.last_deaths = []
+
+    if game.round_number not in game.discussion_history:
+        game.discussion_history[game.round_number] = []
+
+    if game.last_voted_out:
+        game.discussion_history[game.round_number].append(
+            ("System", f"{game.last_voted_out} has been voted out.")
+        )
+    else:
+        game.discussion_history[game.round_number].append(
+            ("System", "Revote was tied, no one was voted out.")
+        )
+    
+    game.discussion_history[game.round_number].append(
+        ("System", "Night has fallen. Everyone returns to their homes.")
+    )
+
+    await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
+    
+    game.web_app_manager.process_ai_night_actions()
+    
+    await broadcast_to_room(room_id, dump_state(game))
 
 async def start_revote_discussion_phase(room_id: str):
     room = get_room_or_error(room_id)
