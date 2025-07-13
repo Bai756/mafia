@@ -969,16 +969,3 @@ async def start_revote_voting_phase(room_id: str):
     await make_ai_players_vote(room_id, is_revote=True)
 
     await start_phase_timer(room_id, VOTING_DURATION, "day", "revote_voting")
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-if __name__ == "__main__":
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    try:
-        import uvicorn
-        uvicorn.run(app, host="0.0.0.0", port=8000)
-    except Exception as e:
-        logging.exception("Failed to start app: %s", e)
