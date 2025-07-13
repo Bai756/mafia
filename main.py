@@ -10,7 +10,7 @@ from player_classes import AI_Player, Human_Player
 import logging
 
 NIGHT_DURATION = 30
-DISCUSSION_DURATION = 60
+DISCUSSION_DURATION = 90
 VOTING_DURATION = 30
 REVOTE_DISCUSSION_DURATION = 45
 
@@ -380,9 +380,11 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
     
     await asyncio.sleep(2)
     
-    ai_message = current_speaker.generate_argument(game)
-    if not ai_message:
-        ai_message = "Message not generated correctly."
+    try:
+        ai_message = current_speaker.generate_argument(game)
+    except Exception as e:
+        print("Error generating AI argument:", e)
+        ai_message = "Error generating response: " + str(e)
     
     # Add the message to the discussion    
     result = game.web_app_manager.add_message(current_speaker_name, ai_message)
@@ -394,7 +396,7 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
         if game.current_speaker and game.current_speaker != current_speaker_name:
             next_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
             if next_speaker and isinstance(next_speaker, AI_Player) and next_speaker.is_alive:
-                await asyncio.sleep(2)
+                await asyncio.sleep(4)
                 asyncio.create_task(process_ai_turn(game, room_id))
 
 def dump_state(game: Game_Manager, player_name: str = None):

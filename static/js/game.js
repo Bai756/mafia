@@ -300,12 +300,10 @@ document.addEventListener('DOMContentLoaded', function() {
             statusElements.phaseDisplay.textContent = gameState.phase === 'day' ? 'Day' : 'Night';
         }
         
-        // Update round display
         if (statusElements.roundDisplay) {
             statusElements.roundDisplay.textContent = gameState.round;
         }
         
-        // Add mafia count display
         if (statusElements.mafiaCountDisplay) {
             statusElements.mafiaCountDisplay.textContent = gameState.mafia_count || '?';
         }
@@ -318,16 +316,14 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update discussion feed
         updateDiscussionFeed(gameState.discussion);
-        
-        
-        // Update chat input availability based on turn
+                
+        // Update chat input availability
         updateChatInput(gameState);
-        
         
         // Update action area instructions
         updateActionArea(gameState.phase);
         
-        // Update investigation results if they're available and player is investigator
+        // Update investigation results if available
         if (state.playerRole === 'Investigator' && gameState.investigation_results && 
             gameState.investigation_results.length > 0) {
             updateInvestigationResults(gameState.investigation_results);
@@ -674,6 +670,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Only enable chat during day phase if it's the player's turn and game isn't over
         const enableChat = isDay && isPlayersTurn && !state.isGameOver && state.isAlive;
         
+        // Keep track of the current speaker for UI updates
+        if (state.currentSpeaker !== gameState.current_speaker) {
+            state.currentSpeaker = gameState.current_speaker;
+        }
+        
         if (enableChat) {
             discussionElements.chatInputArea.classList.remove('chat-input-disabled');
             discussionElements.messageInput.disabled = false;
@@ -689,25 +690,35 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!document.getElementById('turnIndicator')) {
                 discussionElements.chatInputArea.insertBefore(turnIndicator, discussionElements.messageInput);
             }
+            
+            const speakerInfo = document.getElementById('speakerInfo');
+            if (speakerInfo) {
+                speakerInfo.remove();
+            }
         } else {
             discussionElements.chatInputArea.classList.add('chat-input-disabled');
             discussionElements.messageInput.disabled = true;
             discussionElements.sendMessageBtn.disabled = true;
             
-            // Remove turn indicator if exists
+            // Remove turn indicator
             const turnIndicator = document.getElementById('turnIndicator');
             if (turnIndicator) {
                 turnIndicator.remove();
             }
             
-            // Show whose turn it is if in day phase
+            // Show current speaker info in day phase
             if (isDay && gameState.current_speaker && !state.isGameOver) {
+                const existingSpeakerInfo = document.getElementById('speakerInfo');
+                if (existingSpeakerInfo) {
+                    existingSpeakerInfo.remove();
+                }
+                
                 const speakerInfo = document.createElement('div');
                 speakerInfo.className = 'current-speaker-info';
                 speakerInfo.id = 'speakerInfo';
                 speakerInfo.textContent = `${gameState.current_speaker} is speaking...`;
                 
-                if (!document.getElementById('speakerInfo')) {
+                if (discussionElements.chatInputArea && discussionElements.messageInput) {
                     discussionElements.chatInputArea.insertBefore(speakerInfo, discussionElements.messageInput);
                 }
             }
