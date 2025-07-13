@@ -44,8 +44,8 @@ You can play the game at <https://mafiagame.example.com>
 
 3. **Start the server:**
 
-   ```bash
-   fastapi dev main.py
+   ```python
+   python main.py
    ```
 
 ---

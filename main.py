@@ -969,3 +969,7 @@ async def start_revote_voting_phase(room_id: str):
     await make_ai_players_vote(room_id, is_revote=True)
 
     await start_phase_timer(room_id, VOTING_DURATION, "day", "revote_voting")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
