@@ -18,7 +18,7 @@ This project is a complete multiplayer implementation of Mafia where players mus
 
 ## Where to Play
 
-You can play the game at <https://mafiagame.example.com>
+You can play the game at <bai756.hackclub.app>
 
 ## 🔧 Installation
 

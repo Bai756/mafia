@@ -566,7 +566,7 @@ def check_and_schedule_cleanup(room_id: str):
                 break
 
     if not active_humans:
-        timeout = 1 if is_lobby else 300
+        timeout = 1 if is_lobby else 60
         logger.info(f"No active humans in {'lobby' if is_lobby else 'game'} {room_id}, scheduling cleanup in {timeout} seconds")
         room_timers[room_id] = asyncio.create_task(delayed_room_cleanup(room_id, timeout))
 

@@ -2,8 +2,11 @@ import random
 import json
 import requests
 import os
+from dotenv import load_dotenv
 from memory import AgentMemory
 
+load_dotenv()
+API_KEY = os.getenv("GROQ_API_KEY")
 
 class Player:
     def __init__(self, role, name):
@@ -304,7 +307,7 @@ class AI_Player(Player):
             "https://api.groq.com/openai/v1/chat/completions",
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}"
+                "Authorization": f"Bearer {API_KEY}"
             },
             json=payload,
             timeout=30
