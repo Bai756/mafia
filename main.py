@@ -9,10 +9,10 @@ from game import Game_Manager
 from player_classes import AI_Player, Human_Player
 import logging
 
-NIGHT_DURATION = 20
-DISCUSSION_DURATION = 10
-VOTING_DURATION = 20
-REVOTE_DISCUSSION_DURATION = 10
+NIGHT_DURATION = 30
+DISCUSSION_DURATION = 120
+VOTING_DURATION = 30
+REVOTE_DISCUSSION_DURATION = 60
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -163,13 +163,7 @@ async def start_game(room_id: str):
     game.shuffle_roles()
     game.round_number = 1
     game.sub_phase = "night_actions"
-
-    # testing purposes
-    for player in game.players:
-        if isinstance(player, Human_Player):
-            player.role = "Investigator"
     
-    # Initialize AI player suspicions
     for player in game.players:
         if isinstance(player, AI_Player):
             player.initialize_suspicion_meter(game.players)
@@ -179,7 +173,7 @@ async def start_game(room_id: str):
         "room_id": room_id
     })
 
-    # Add system message about first night
+    # Add system message
     if 1 not in game.discussion_history:
         game.discussion_history[1] = []
     game.discussion_history[1].append(("System", "The game has begun. Night has fallen."))
@@ -187,12 +181,10 @@ async def start_game(room_id: str):
     # Start night phase timer immediately
     await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
     
-    # Process AI night actions
     game.web_app_manager.process_ai_night_actions()
 
     await advance_game_phase(room_id)
 
-    # Broadcast game state to all clients
     await broadcast_to_room(room_id, dump_state(game))
     
     return {"status": "started"}
@@ -977,7 +969,3 @@ async def start_revote_voting_phase(room_id: str):
     await make_ai_players_vote(room_id, is_revote=True)
 
     await start_phase_timer(room_id, VOTING_DURATION, "day", "revote_voting")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

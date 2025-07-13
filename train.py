@@ -1,6 +1,6 @@
 import numpy as np
 from pettingzoo.utils import ParallelEnv
-from gymnasium.spaces import Discrete, Box, Dict
+from gymnasium.spaces import Discrete, Box
 from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv

@@ -433,10 +433,6 @@ input {
     padding-bottom: 0;
 }
 
-.night-mode .action-panel.compact h3 {
-    border-bottom-color: rgba(255, 255, 255, 0.1);
-}
-
 .game-status {
     text-align: center;
     font-weight: 500;
@@ -543,36 +539,6 @@ input {
     opacity: 1;
 }
 
-.night-mode {
-    --color-background: #1a1a2e;
-    --color-card: #16213e;
-    --color-text: #e6e6e6;
-    --color-border: #2a2a4a;
-    --color-text-light: #a0a0a0;
-    
-    --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --bg-panel: var(--bg-dark-panel);
-}
-
-.night-mode .panel-container {
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-.night-mode .section-header {
-    border-bottom-color: rgba(255, 255, 255, 0.1);
-}
-
-.night-mode #lastDeaths,
-.night-mode #lastVotedOut,
-.night-mode #investigationResults {
-    background-color: rgba(22, 33, 62, 0.5);
-}
-
-.night-mode .player-info-row {
-    background-color: rgba(30, 38, 66, 0.7);
-    border-color: rgba(255, 255, 255, 0.05);
-}
-
 .message {
     margin-bottom: var(--space-xs);
     padding: var(--space-xs) var(--space-sm);
@@ -602,12 +568,6 @@ input {
     font-size: 1rem;
 }
 
-.night-mode .message-input {
-    background-color: var(--bg-dark-panel);
-    color: white;
-    border-color: #444;
-}
-
 .chat-controls {
     display: flex;
     justify-content: space-between;
@@ -634,11 +594,6 @@ input {
     color: #2e7d32;
 }
 
-.night-mode .your-turn {
-    background-color: rgba(76, 175, 80, 0.2);
-    color: #81c784;
-}
-
 .player-info-header {
     background-color: #1a1a2e;
     color: white;
@@ -646,7 +601,6 @@ input {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-radius: var(--rounded);
     grid-row: 1;
     margin: 0;
     max-height: 50px;
@@ -716,16 +670,8 @@ input {
     text-align: center;
 }
 
-.night-mode .players-list .player-item {
-    border-bottom-color: var(--color-border);
-}
-
 .players-list .player-item:hover {
     background-color: rgba(0, 0, 0, 0.02);
-}
-
-.night-mode .players-list .player-item:hover {
-    background-color: rgba(255, 255, 255, 0.02);
 }
 
 .hidden {
@@ -749,10 +695,6 @@ input {
     font-size: 0.9rem;
     margin-top: var(--space-xs);
     animation: pulse 2s infinite;
-}
-
-.night-mode .speaker-indicator {
-    background-color: var(--bg-dark-panel);
 }
 
 .phase-timer {
@@ -955,26 +897,6 @@ input {
     padding-bottom: var(--space-xs);
 }
 
-.night-mode .deaths-list {
-    background-color: rgba(255, 85, 85, 0.1);
-}
-
-.night-mode .death-item {
-    border-bottom-color: rgba(255, 85, 85, 0.15);
-}
-
-.night-mode .death-item:hover {
-    background-color: rgba(255, 85, 85, 0.15);
-}
-
-.night-mode #lastDeaths {
-    background-color: rgba(22, 33, 62, 0.5);
-}
-
-.night-mode #lastDeaths h3 {
-    border-bottom-color: rgba(255, 85, 85, 0.2);
-}
-
 .investigation-results-list {
     list-style-type: none;
     padding: 0;
@@ -1031,26 +953,6 @@ input {
     font-size: 1rem;
     border-bottom: 1px solid rgba(25, 118, 210, 0.2);
     padding-bottom: var(--space-xs);
-}
-
-.night-mode .investigation-results-list {
-    background-color: rgba(25, 118, 210, 0.1);
-}
-
-.night-mode .investigation-result {
-    border-bottom-color: rgba(25, 118, 210, 0.15);
-}
-
-.night-mode .investigation-result:hover {
-    background-color: rgba(25, 118, 210, 0.15);
-}
-
-.night-mode #investigationResults {
-    background-color: rgba(22, 33, 62, 0.5);
-}
-
-.night-mode #investigationResults h3 {
-    border-bottom-color: rgba(25, 118, 210, 0.2);
 }
 
 @keyframes magnify {
@@ -1115,26 +1017,6 @@ input {
     background-color: rgba(123, 31, 162, 0.15);
     font-weight: 700;
     border-left: 3px solid #7b1fa2;
-}
-
-.night-mode .voted-out-container {
-    background-color: rgba(22, 33, 62, 0.5);
-}
-
-.night-mode .voted-out-list {
-    background-color: rgba(123, 31, 162, 0.1);
-}
-
-.night-mode .voted-out-item {
-    border-bottom-color: rgba(123, 31, 162, 0.15);
-}
-
-.night-mode .voted-out-item:hover {
-    background-color: rgba(123, 31, 162, 0.15);
-}
-
-.night-mode .voted-out-container h3 {
-    border-bottom-color: rgba(123, 31, 162, 0.2);
 }
 
 .revote-notice {
@@ -1256,24 +1138,6 @@ input {
     font-weight: 600;
 }
 
-.night-mode #lastDeaths,
-.night-mode #lastVotedOut,
-.night-mode #investigationResults {
-    background-color: rgba(22, 33, 62, 0.5);
-}
-
-.night-mode #lastDeaths h3 {
-    border-bottom-color: rgba(255, 85, 85, 0.2);
-}
-
-.night-mode #lastVotedOut h3 {
-    border-bottom-color: rgba(123, 31, 162, 0.2);
-}
-
-.night-mode #investigationResults h3 {
-    border-bottom-color: rgba(25, 118, 210, 0.2);
-}
-
 .game-over-overlay {
     position: fixed;
     top: 0;
@@ -1313,19 +1177,6 @@ input {
     background-color: rgba(0, 0, 0, 0.05);
     border-radius: var(--rounded);
     text-align: left;
-}
-
-.night-mode .game-over-overlay {
-    background-color: rgba(0, 0, 0, 0.9);
-}
-
-.night-mode .game-over-content {
-    background-color: var(--color-card);
-    color: var(--color-text);
-}
-
-.night-mode .game-result-details {
-    background-color: rgba(255, 255, 255, 0.05);
 }
 
 .role-badge {
