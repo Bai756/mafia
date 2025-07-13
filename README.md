@@ -20,7 +20,6 @@ This project is a complete multiplayer implementation of Mafia where players mus
 
 You can play the game at <https://mafiagame.example.com>
 
-
 ## 🔧 Installation
 
 ### Requirements
