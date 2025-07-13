@@ -10,9 +10,9 @@ from player_classes import AI_Player, Human_Player
 import logging
 
 NIGHT_DURATION = 30
-DISCUSSION_DURATION = 120
+DISCUSSION_DURATION = 60
 VOTING_DURATION = 30
-REVOTE_DISCUSSION_DURATION = 60
+REVOTE_DISCUSSION_DURATION = 45
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
