@@ -6,13 +6,13 @@
     <title>Game Lobby | Mafia Game</title>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-<body>
+<body class="lobby-page">
     <script>
         window.ROOM_ID = "{{ ROOM_ID }}";
         window.PLAYER_NAME = "{{ PLAYER_NAME }}";
     </script>
 
-    <div class="player-info-header">
+    <div class="lobby-player-info-header">
         <div class="player-name-display">
             <span class="label">Playing as:</span>
             <span id="headerPlayerName" class="value"></span>
@@ -23,25 +23,28 @@
         </div>
     </div>
     
-    <div class="container">
-        <header>
-            <h1>Game Lobby</h1>
-            <p>Room ID: <span id="roomIdDisplay" class="highlight"></span></p>
+    <div class="page-container">
+        <header class="lobby-hero-header">
+            <h1>Lobby</h1>
         </header>
         
+        <div class="room-info">
+            <p>Room ID: <span id="roomIdDisplay" class="highlight"></span></p>
+        </div>
+        
         <main>
-            <div class="card">
+            <div class="elevated-card">
                 <div class="players-section">
                     <h2>Players</h2>
-                    <ul id="playersList" class="players-list">
+                    <ul id="playersList" class="lobby-player-list">
                         <!-- Players will be added dynamically -->
                     </ul>
                     <p>Waiting for players: <span id="playerCount">0</span></p>
                 </div>
                 
                 <div class="lobby-controls">
-                    <button id="startGameBtn" class="btn btn-primary" disabled>Start Game</button>
-                    <button id="copyRoomIdBtn" class="btn">Copy Room ID</button>
+                    <button id="startGameBtn" class="lobby-button lobby-button-primary" disabled>Start Game</button>
+                    <button id="copyRoomIdBtn" class="lobby-button">Copy Room ID</button>
                 </div>
             </div>
         </main>

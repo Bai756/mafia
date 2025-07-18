@@ -807,9 +807,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function handleMessageInput() {
         const length = discussionElements.messageInput.value.length;
-        discussionElements.charCounter.textContent = `${length}/200`;
+        discussionElements.charCounter.textContent = `${length}/150`;
         
-        if (length > 180) {
+        if (length > 125) {
             discussionElements.charCounter.style.color = '#f44336';
         } else {
             discussionElements.charCounter.style.color = '';
@@ -853,7 +853,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             state.socket.send(JSON.stringify(messageData));
-            console.log("Message sent:", message);
             
             // Debug message
             const testMsg = document.createElement('div');
@@ -864,7 +863,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Clear input after sending
             discussionElements.messageInput.value = '';
             if (discussionElements.charCounter) {
-                discussionElements.charCounter.textContent = '0/200';
+                discussionElements.charCounter.textContent = '0/150';
+                discussionElements.charCounter.style.color = '';
             }
             
             // Disable input until next turn
@@ -872,15 +872,6 @@ document.addEventListener('DOMContentLoaded', function() {
             discussionElements.messageInput.disabled = true;
             discussionElements.sendMessageBtn.disabled = true;
             
-            // Add sending indicator
-            const sendingIndicator = document.createElement('div');
-            sendingIndicator.id = 'sendingIndicator';
-            sendingIndicator.className = 'sending-indicator';
-            sendingIndicator.textContent = 'Message sent. Waiting for next speaker...';
-            
-            if (!document.getElementById('sendingIndicator')) {
-                discussionElements.chatInputArea.appendChild(sendingIndicator);
-            }
         } catch (error) {
             console.error("Error sending message:", error);
         }

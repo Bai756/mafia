@@ -6,31 +6,31 @@
     <title>Mafia Game</title>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Mafia Game</h1>
-            <p>A deception game</p>
+<body class="home-page">
+    <div class="page-container">
+        <header class="hero-header">
+            <h1>Mafia</h1>
+            <p>A strategic game of deception and deduction</p>
         </header>
         
-        <main class="form-container">
-            <div class="card">
-                <h2>Join The Game</h2>
+        <main class="home-form-container">
+            <div class="elevated-card">
+                <h2 class="form-title">Join The Game</h2>
                 
                 <form onsubmit="return false;">
-                    <div class="form-group">
+                    <div class="home-form-group">
                         <label for="playerName">Your Name</label>
-                        <input type="text" id="playerName" placeholder="Enter your name">
+                        <input type="text" id="playerName" class="lobby-input" placeholder="Enter your name">
                     </div>
                     
-                    <div class="button-group">
-                        <button id="createRoomBtn" class="btn-primary btn">Create Room</button>
-                        <p class="separator">or</p>
-                        <div class="form-group">
+                    <div class="home-button-group">
+                        <button id="createRoomBtn" class="lobby-button lobby-button-primary">Create Room</button>
+                        <div class="home-separator">or</div>
+                        <div class="home-form-group">
                             <label for="roomId">Room ID</label>
-                            <input type="text" id="roomId" placeholder="Enter room ID">
+                            <input type="text" id="roomId" class="lobby-input" placeholder="Enter room ID">
                         </div>
-                        <button id="joinRoomBtn" class="btn">Join Room</button>
+                        <button id="joinRoomBtn" class="lobby-button lobby-button-primary">Join Room</button>
                     </div>
                 </form>
                 
