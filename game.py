@@ -23,6 +23,8 @@ class Game_Manager:
         self.phase_timer = None
         self.tied_candidates = []
         self.last_voted_out = None
+        self.game_over = False
+        self.winner = None
 
         self.use_model = use_model
         if use_model:
@@ -60,9 +62,13 @@ class Game_Manager:
         mafia_count = sum(1 for p in alive_players if p.role == "Mafia")
         # Villagers win if all mafia are eliminated
         if mafia_count == 0:
+            self.game_over = True
+            self.winner = "Villagers"
             return True, "Villagers"
         # Mafia win if they outnumber or equal villagers
         if mafia_count >= len(alive_players) - mafia_count:
+            self.game_over = True
+            self.winner = "Mafia"
             return True, "Mafia"
         return False, None
 
@@ -131,7 +137,11 @@ class Game_Manager:
         return self.web_app_manager.get_investigation_results(player_name)
     
     def get_game_status(self):
-        return self.web_app_manager.get_game_status()
+        # Always return the current over/winner state
+        return {
+            "is_over": self.game_over,
+            "winner": self.winner
+        }
     
     def is_player_speaker(self, player):
         if isinstance(player, str):

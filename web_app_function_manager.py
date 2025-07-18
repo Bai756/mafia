@@ -145,6 +145,16 @@ class WebAppFunctionManager:
                                 self.vote_action(ai_player.name, target.name)
                                 votes_count += 1
     
+        game_status = self.get_game_status()
+        if game_status["is_over"]:
+            round_num = self.game.round_number
+            if round_num not in self.game.discussion_history:
+                self.game.discussion_history[round_num] = []
+            self.game.discussion_history[round_num].append(
+                ("System", f"Game over! {game_status['winner']} win!")
+            )
+            return True
+
         return False
 
     def _resolve_night_actions(self):

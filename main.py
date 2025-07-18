@@ -278,6 +278,7 @@ async def advance_game_phase(room_id: str):
     else:
         success = False
         
+    game.check_win_condition()
     await broadcast_to_room(room_id, dump_state(game))
     
     return {"status": "advanced" if success else "failed", "phase": new_phase, "sub_phase": game.sub_phase}
@@ -593,13 +594,15 @@ async def delayed_room_cleanup(room_id: str, delay_seconds: int):
             
             active_humans = False
             for p in game.players:
-               if not isinstance(p, AI_Player) and p.name in room['clients']:
+                if not isinstance(p, AI_Player) and p.name in room['clients']:
                     active_humans = True
                     logger.info(f"Cleanup cancelled: Human reconnected to {'lobby' if is_lobby else 'game'} {room_id}")
                     break
 
             if not active_humans:
                 logger.info(f"Cleaning up {'lobby' if is_lobby else 'game'} {room_id}")
+                if 'game' in room:
+                    del room['game']
                 del rooms[room_id]
                 if room_id in room_timers:
                     del room_timers[room_id]
@@ -616,6 +619,9 @@ def handle_action(game: Game_Manager, player_name: str, action_data: dict):
     action_type = action_data.get("action")
     target_name = action_data.get("target")
     
+    if getattr(game, "game_over", False):
+        return {"success": False, "error": "Game is over."}
+
     if action_type == "send_message":
         message = action_data.get("message")
         if message:
@@ -870,6 +876,7 @@ async def handle_voting_timeout(room_id: str):
     
     resolved = game.web_app_manager._resolve_day_votes()
     
+    game.check_win_condition()
     await broadcast_to_room(room_id, dump_state(game))
 
     if resolved:
@@ -892,6 +899,9 @@ async def handle_revoting_timeout(room_id: str):
     
     resolved = game.web_app_manager._resolve_day_votes()
     
+    game.check_win_condition()
+    await broadcast_to_room(room_id, dump_state(game))
+
     # Manually transition to night phase because revoting handling is different
     game.tied_candidates = []
     game.votes = {}
