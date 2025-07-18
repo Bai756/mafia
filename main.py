@@ -378,9 +378,7 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
     current_speaker = next((p for p in game.players if p.name == current_speaker_name), None)
     if not current_speaker or not isinstance(current_speaker, AI_Player) or not current_speaker.is_alive:
         return
-    
-    await asyncio.sleep(2)
-    
+        
     try:
         ai_message = current_speaker.generate_argument(game)
     except Exception as e:
@@ -397,7 +395,7 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
         if game.current_speaker and game.current_speaker != current_speaker_name:
             next_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
             if next_speaker and isinstance(next_speaker, AI_Player) and next_speaker.is_alive:
-                await asyncio.sleep(4)
+                await asyncio.sleep(5)
                 asyncio.create_task(process_ai_turn(game, room_id))
 
 def dump_state(game: Game_Manager, player_name: str = None):
@@ -406,7 +404,7 @@ def dump_state(game: Game_Manager, player_name: str = None):
         "round": game.round_number,
         "alive": [p.name for p in game.get_alive_players()],
         "last_deaths": list(dict.fromkeys(p.name for p in game.last_deaths)),
-        "last_voted_out": game.last_voted_out,
+        "last_voted_out": game.last_voted_out.name if game.last_voted_out else None,
         "discussion": game.discussion_history.get(game.round_number, []),
         "eliminated": [p.name for p in game.players if not p.is_alive],
         "eliminated_roles": {p.name: p.role for p in game.players if not p.is_alive},
@@ -635,7 +633,12 @@ def handle_action(game: Game_Manager, player_name: str, action_data: dict):
                 if next_speaker and isinstance(next_speaker, AI_Player) and next_speaker.is_alive:
                     for room_id, room in rooms.items():
                         if room['game'] is game:
-                            asyncio.create_task(process_ai_turn(game, room_id))
+                            def schedule_ai_turn():
+                                async def delayed_ai_turn():
+                                    await asyncio.sleep(4)
+                                    asyncio.create_task(process_ai_turn(game, room_id))
+                                asyncio.create_task(delayed_ai_turn())
+                            schedule_ai_turn()
                             break
             
             return {"success": success}
@@ -698,7 +701,6 @@ def handle_action(game: Game_Manager, player_name: str, action_data: dict):
                 if getattr(game, 'phase_timer', None):
                     game.phase_timer.cancel()
                     game.phase_timer = None
-                    print(f"[TIMER] Voting phase ended early - all players have voted")
 
                 if game.sub_phase == "revote_voting":
                     asyncio.create_task(handle_revoting_timeout(room_id))
@@ -739,9 +741,7 @@ async def start_phase_timer(room_id: str, duration: int, phase: str, sub_phase: 
 async def phase_timer_task(room_id: str, duration: int, phase: str, sub_phase: str):
     room = get_room_or_error(room_id)
     game = room['game']
-    
-    print(f"[TIMER] Starting {duration}s countdown for {phase}/{sub_phase}")
-    
+        
     try:
         # Countdown with updates
         for remaining in range(duration, 0, -1):
@@ -763,25 +763,19 @@ async def phase_timer_task(room_id: str, duration: int, phase: str, sub_phase: s
         
     finally:
         game.phase_timer = None
-    
-    print(f"[TIMER] Phase timer expired for {phase}/{sub_phase}")
-    
+        
     # Handle phase transitions based on current phase and sub_phase
     if phase == "night":
-        print("[TIMER] Night phase ended, handling timeout")
         await handle_night_timeout(room_id)
     elif phase == "day":
         if sub_phase == "discussion":
-            print("[TIMER] Day discussion ended, starting voting phase")
             await start_voting_phase(room_id)
         elif sub_phase == "voting":
-            print("[TIMER] Voting ended, handling timeout")
             await handle_voting_timeout(room_id)
         elif sub_phase == "revote_discussion":
-            print("[TIMER] Revote discussion ended, starting revote voting")
+            await start_revote_voting_phase(room_id)
             await start_revote_voting_phase(room_id)
         elif sub_phase == "revote_voting":
-            print("[TIMER] Revote voting ended, handling timeout")
             await handle_revoting_timeout(room_id)
 
 async def handle_night_timeout(room_id: str):
@@ -854,6 +848,10 @@ async def start_voting_phase(room_id: str):
     game.discussion_history[round_num].append(("System", "Discussion time is over. Voting has begun."))
     
     game.votes = {}
+
+    for player in game.get_alive_players():
+        if isinstance(player, AI_Player):
+            player.update_suspicion(game)
     
     # AI players vote immediately
     await make_ai_players_vote(room_id, is_revote=False)
@@ -905,10 +903,8 @@ async def handle_revoting_timeout(room_id: str):
     # Manually transition to night phase because revoting handling is different
     game.tied_candidates = []
     game.votes = {}
-    
     game.is_night = True
     game.round_number += 1
-    
     game.last_protected = []
     game.last_targeted = []
     game.last_deaths = []
@@ -917,8 +913,10 @@ async def handle_revoting_timeout(room_id: str):
         game.discussion_history[game.round_number] = []
 
     if game.last_voted_out:
+        role = game.last_voted_out.role
+        txt = "a Mafia" if role == "Mafia" else "not a Mafia"
         game.discussion_history[game.round_number].append(
-            ("System", f"{game.last_voted_out} has been voted out.")
+            ("System", f"{game.last_voted_out.name} has been voted out. {game.last_voted_out.name} was {txt}.")
         )
     else:
         game.discussion_history[game.round_number].append(
@@ -929,10 +927,15 @@ async def handle_revoting_timeout(room_id: str):
         ("System", "Night has fallen. Everyone returns to their homes.")
     )
 
+    alive = game.get_alive_players()
+    humans_with_night_roles = [p for p in alive if isinstance(p, Human_Player) and p.role in ("Mafia", "Doctor", "Investigator")]
+    if not humans_with_night_roles:
+        game.web_app_manager.process_ai_night_actions()
+        await advance_game_phase(room_id)
+        return
+
     await start_phase_timer(room_id, NIGHT_DURATION, "night", "night_actions")
-    
     game.web_app_manager.process_ai_night_actions()
-    
     await broadcast_to_room(room_id, dump_state(game))
 
 async def start_revote_discussion_phase(room_id: str):
@@ -977,6 +980,10 @@ async def start_revote_voting_phase(room_id: str):
     game.discussion_history[round_num].append(("System", "Discussion is over. Please revote now."))
     
     game.votes = {}
+
+    for player in game.get_alive_players():
+        if isinstance(player, AI_Player):
+            player.update_suspicion(game)
     
     await make_ai_players_vote(room_id, is_revote=True)
 

@@ -200,13 +200,15 @@ class WebAppFunctionManager:
             eliminated = next((p for p in self.game.players if p.name == eliminated_name), None)
             if eliminated:
                 eliminated.is_alive = False
-                self.game.last_voted_out = eliminated_name
+                self.game.last_voted_out = eliminated
                 
                 # Add system message about elimination
                 round_num = self.game.round_number
                 if round_num in self.game.discussion_history:
+                    role = eliminated.role
+                    txt = "a Mafia" if role == "Mafia" else "not a Mafia"
                     self.game.discussion_history[round_num].append(
-                        ("System", f"{eliminated_name} was voted out by the town.")
+                        ("System", f"{eliminated.name} was voted out by the town. {eliminated.name} was {txt}.")
                     )
                 
                 # Reset voting state

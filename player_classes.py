@@ -1,12 +1,15 @@
 import random
 import json
+import openai
 import requests
 import os
 from dotenv import load_dotenv
 from memory import AgentMemory
+from prompts import SYSTEM_BASE, SUSPICION_INSTRUCTIONS, ARGUMENT_INSTRUCTIONS
 
 load_dotenv()
-API_KEY = os.getenv("GROQ_API_KEY")
+API_KEY = os.getenv("API_KEY")
+openai.api_key = API_KEY
 
 class Player:
     def __init__(self, role, name):
@@ -138,32 +141,18 @@ class AI_Player(Player):
         history = game_manager.discussion_history.get(game_manager.round_number, [])
         history_str = '\n'.join(f"{s}: {l}" for s, l in history) or "No discussion yet."
         alive_players = [p for p in game_manager.get_alive_players() if p.is_alive and p != self]
-        prompt = f"""
-            You are an assistant helping a member in a game of Mafia.
-            There are mafia, villagers, doctors, and investigators.
-            You are an AI player named {self.name} with the role of {self.role}.
-            {"The other mafia members are " + ', '.join(p.name for p in alive_players if p.role == "Mafia" and p != self) + "." if self.role == "Mafia" else ""}
-            Based on the recent discussion, assign suspicion scores to each alive player (excluding the speaker).
-            The players are:
-            {', '.join(p.name for p in alive_players)}
+        
+        messages = [
+            {"role": "system", "content": SYSTEM_BASE},
+            {"role": "user", "content": SUSPICION_INSTRUCTIONS},
+            {"role": "user", "content": f"Your name: {self.name}"},
+            {"role": "user", "content": f"Your role: {self.role}. {"Fellow Mafia: " + ', '.join(p.name for p in alive_players if p.role == "Mafia" and p != self) + "." if self.role == "Mafia" else ""}"},
+            {"role": "user", "content": f"Alive Players: {alive_players}"},
+            {"role": "user", "content": f"Current scores: {self.suspicions}"},
+            {"role": "user", "content": f"Discussion:\n{history_str}"}
+        ]
 
-            Current suspicion scores:
-            {self.suspicions}
-
-            Your task is to update the suspicion scores based on the recent discussion.
-            Each score should be:
-            -1.0 (completely innocent) to 1.0 (completely Mafia)
-            If scores are already -1.0 or 1.0, do not change them.
-            Do not remove any players from the suspicion scores, even if they are not mentioned in the discussion.
-
-            Recent discussion:
-            {history_str}
-
-            Return as JSON like:
-            {{ "Alice": 0.3, "Bob": -0.2 }}
-            Do not include any other text or formatting.
-            """
-        new_suspicions = self.call_api(prompt)
+        new_suspicions = self.call_api(messages)
         new_suspicions = json.loads(new_suspicions)
 
         for player_name, score in new_suspicions.items():
@@ -176,18 +165,16 @@ class AI_Player(Player):
 
         if self.name in self.suspicions:
             del self.suspicions[self.name]
-            
-        print(f"{self.name} updated suspicion scores: {self.suspicions}")
-    
+                
     def generate_argument(self, game_manager):
-        alive = game_manager.get_alive_players()
-        players_list = ', '.join(p.name for p in alive)
+        alive_players = game_manager.get_alive_players()
+        players_list = ', '.join(p.name for p in alive_players)
         deaths = game_manager.last_deaths
         deaths_list = ', '.join(f"{p.name} (killed by Mafia)" for p in deaths) if deaths else 'None'
         history = game_manager.discussion_history.get(game_manager.round_number, [])
         history_str = '\n'.join(f"{s}: {l}" for s, l in history) or "No discussion yet."
-        mafia_names = ', '.join(p.name for p in alive if p.role == "Mafia" and p != self)
-        number_of_mafia = sum(1 for p in alive if p.role == "Mafia")
+        mafia_names = ', '.join(p.name for p in alive_players if p.role == "Mafia" and p != self)
+        number_of_mafia = sum(1 for p in alive_players if p.role == "Mafia")
 
         # Create memory of recent actions based on role
         mem = ""
@@ -215,6 +202,7 @@ class AI_Player(Player):
                 mem += "- You haven't investigated anyone yet."
 
         elif self.role == "Mafia":
+            fellow_mafia = [p.name for p in alive_players if p.role == "Mafia" and p != self]
             try:
                 # Be defensive here too
                 if hasattr(game_manager, 'last_targeted') and game_manager.last_targeted:
@@ -223,96 +211,54 @@ class AI_Player(Player):
                         mem += "- Mafia kills last night: " + ', '.join(kill_names)
             except AttributeError:
                 mem += "- No mafia kills recorded yet."
-    
-        prompt = f"""
-            You are {self.name}, a {self.role} in a text-based Mafia game.
-            {f"The other mafia members are {mafia_names}." if self.role == "Mafia" else ""}
+        
+        messages = [
+            {"role": "system", "content": SYSTEM_BASE},
+            {"role": "user",   "content": ARGUMENT_INSTRUCTIONS},
+            {"role": "user",   "content": f"Your role: {self.role}, Your name: {self.name}, {"Fellow Mafia: " + ", ".join(fellow_mafia) + "." if self.role == "Mafia" else ""}"},
+            {"role": "user",   "content": f"Alive: {alive_players}"},
+            {"role": "user",   "content": f"Last deaths: {deaths}"},
+            {"role": "user",   "content": f"Last voted out: {game_manager.last_voted_out.name} was a {game_manager.last_voted_out.role}." if game_manager.last_voted_out else "None"},
+            {"role": "user",   "content": f"Last actions taken: {mem or 'None'}"},
+            {"role": "user",   "content": f"Suspicion scores: {self.suspicions}"},
+            {"role": "user",   "content": f"Round: {game_manager.round_number}"},
+            {"role": "user",   "content": f"Discussion: {history_str}"}
+        ]
 
-            Objective:
-            - Villagers: eliminate all Mafia.
-            - Mafia: remain hidden and outnumber the Villagers.
+        return self.call_api(messages)
 
-            Rules:
-            - Night kills are always by Mafia (unless protected).
-            - Doctors protect one person each night.
-            - Investigators each learn one player's role (mafia or not mafia) each night.
-            - Day is for discussion and voting.
+    def call_api(self, messages):
+        # payload = {
+        #     "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        #     "messages": messages,
+        #     "temperature": 0.4,
+        #     "max_tokens": 128,
+        #     "stop": ["\n\n"]
+        # }
 
-            Game State:
-            Alive players: {players_list}
-            Last night’s deaths: {deaths_list}
-            Suspicion scores: {self.suspicions} (This is your suspicions of other players based on previous discussions and actions.)
-            The current round is {game_manager.round_number}.
-            {f"IMPORTANT!! This discussion is about a revote because of a tie." if game_manager.revote else ""}
-            {f"The people in the revote are: {', '.join(p.name for p in game_manager.revote)}." if game_manager.revote else ""}
-
-            Your recent role actions:
-            {mem or '- None'}
-            There are {number_of_mafia} Mafia members remaining. So, if that many people died last night, then all the mafia kills were successful. Each Mafia member kills one person each night.
-
-            Current round discussion:
-            {history_str}
-
-            Instructions:
-            - Do NOT repeat lines verbatim or recycle phrases. Do NOT just copy other players and say the same thing over and over again.
-            - Do NOT refer to events that never happened.
-            - Do NOT mention AI, “the game,” real-world topics, or anything that happened outside of the game.
-            - Do NOT speak in third person about yourself.
-            - Do NOT mention anything previous interactions that never actually happened.
-            - Do NOT mention seeing each other at night because that doesn't happen (mafia just votes to kill and so forth).
-            - Do NOT claim that you interacted with other players in any way that is not true or that you interacted with players during the night. You only interact during the discussion.
-            - Do NOT mourn the death or say anything like that because this is just a game.
-            - Reason about the game state and your role and what you should be doing.
-            - {"Do NOT reveal your kill or accuse fellow Mafia." if self.role == "Mafia" else ""}
-            - {"You play the role of the Doctor, so you can protect one player each night. You are not a actual doctor saving lives. You just help prevent mafia from killing someone." if self.role == "Doctor" else ""}
-            - {"You play the role of the Doctor, you know who you chose to protect last night. If the protected player is alive and the number of deathes is less than the number of mafia, then you successfully protected someone. Otherwise, the person you protected was not targeted by the mafia last night." if self.role == "Doctor" else ""}
-            - Do NOT use any special formatting like "Name: Argument", do not use quotes either.
-            - Just write your argument as a single paragraph without any formatting (couple of sentences).
-            - Do NOT say suspicion score or score. Do NOT say low score or high score; just say that you are suspicious of someone or that you trust someone.
-            - Do NOT say your inner thoughts outloud, say your argument as you are speaking to the other players.
-            - Do NOT accuse others of being quiet or not participating if the discussion just started.
-
-            Now, based on the above, make a new in-character statement responding to the discussion and recent events. Max 200 characters.
-            """
-
-        # response = requests.post(
-        #     'http://localhost:11434/api/generate',
-        #     json={'model': 'mistral', 'prompt': prompt, 'temperature': 0.4}
+        # resp = requests.post(
+        #     "https://api.groq.com/openai/v1/chat/completions",
+        #     headers={
+        #         "Content-Type": "application/json",
+        #         "Authorization": f"Bearer {API_KEY}"
+        #     },
+        #     json=payload,
+        #     timeout=30
         # )
+        # resp.raise_for_status()
+        # data = resp.json()
 
-        # text = ""
-        # for line in response.text.splitlines():
-        #     try:
-        #         data = json.loads(line)
-        #         text += data.get("response", "")
-        #     except Exception:
-        #         continue
-        # return text.strip()
+        # return data["choices"][0]["message"]["content"].strip()
 
-        return self.call_api(prompt)
+        return call_chatgpt(messages)
 
-    def call_api(self, prompt):
-        payload = {
-            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-            "messages": [
-                {"role": "system", "content": "You are a role-playing agent in a Mafia game. Respond strictly in character."},
-                {"role": "user",   "content": prompt}
-            ],
-            "temperature": 0.4,
-            "max_tokens": 128,
-            "stop": ["\n\n"]
-        }
+def call_chatgpt(messages):
+    response = openai.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=messages,
+        temperature=0.4,
+        max_tokens=128,
+        stop=["\n\n"]
+    )
 
-        resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {API_KEY}"
-            },
-            json=payload,
-            timeout=30
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        return data["choices"][0]["message"]["content"].strip()
+    return response.choices[0].message.content.strip()
