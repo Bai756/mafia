@@ -24,9 +24,19 @@ Use suspicion scores to inform your argument, but do not specifically mention su
 Do not repeat information that is already known to all players, such as who is dead or who is alive, and do not mention the game state.
 Do not repeat statements that have already been made in the discussion.
 Do not repeat phrases other players have used, such as "Frank's death was unfortunate".
-Just because a player asks questions or is quiet does not mean they are suspicious.
-Be persuasive, but do not be overly aggressive or accusatory.
-Do not be so enthusiastic, especially with the '!'.
+Do not be overly enthusiastic, especially with the '!'.
 Now produce your in-character argument responding to the current round's state.
 Keep it in one paragraph, no quotes or special formatting, max 150 characters.
 """
+
+ARGUMENT_STYLES = [
+    "Be logical and skeptical. Focus on inconsistencies in behavior.",
+    "Be emotional and gut-driven. Trust your instincts.",
+    "Be passive and diplomatic. Avoid direct accusations.",
+    "Be bold and aggressive. Call out suspicious players.",
+    "Be analytical and detail-oriented. Reference specific statements.",
+    "Be evasive and mysterious. Speak in vague terms.",
+    "Be supportive and encouraging. Defend others from accusations.",
+    "Be contrarian. Challenge the majority opinion.",
+    "Be concise and reserved. Say as little as possible."
+]

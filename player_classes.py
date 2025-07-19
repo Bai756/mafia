@@ -5,7 +5,7 @@ import requests
 import os
 from dotenv import load_dotenv
 from memory import AgentMemory
-from prompts import SYSTEM_BASE, SUSPICION_INSTRUCTIONS, ARGUMENT_INSTRUCTIONS
+from prompts import SYSTEM_BASE, SUSPICION_INSTRUCTIONS, ARGUMENT_INSTRUCTIONS, ARGUMENT_STYLES
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
@@ -51,6 +51,8 @@ class AI_Player(Player):
         super().__init__("Villager", name)
         self.suspicions = {} # Key values will be the name of another player
         self.memory = AgentMemory(max_size=100, embed_dim=32)
+        self.argument_style = random.choice(ARGUMENT_STYLES)
+        print(f"AI Player {self.name} initialized with argument style: {self.argument_style}")
 
     def vote(self, game_manager, valid_targets=None):
         if not game_manager.use_model:
@@ -222,7 +224,8 @@ class AI_Player(Player):
             {"role": "user",   "content": f"Last actions taken: {mem or 'None'}"},
             {"role": "user",   "content": f"Suspicion scores: {self.suspicions}"},
             {"role": "user",   "content": f"Round: {game_manager.round_number}"},
-            {"role": "user",   "content": f"Discussion: {history_str}"}
+            {"role": "user",   "content": f"Discussion: {history_str}"},
+            {"role": "user",   "content": f"Argument styles: {random.choice(self.argument_style)}"}
         ]
 
         return self.call_api(messages)
