@@ -2,8 +2,9 @@
     --color-primary: #8b0000;
     --color-primary-light: #b11b1b;
     
-    --color-secondary: #131c78;
-    --color-secondary-light: #303f9f;
+    --color-secondary: #050a51;
+    --color-secondary-light: #131c78;
+
     
     --color-mafia: #9a1c1c;
     --color-mafia-bg: rgba(170, 38, 38, 0.15);
@@ -132,7 +133,7 @@ input {
 }
 
 .btn-primary {
-    background-color: var(--color-secondary);
+    background-color: var(--color-secondary-light);
     color: white;
 }
 
@@ -544,7 +545,7 @@ input {
 .message .sender {
     font-weight: bold;
     margin-right: var(--space-xs);
-    color: var(--color-secondary);
+    color: var(--color-secondary-light);
 }
 
 .chat-input-area {
@@ -713,7 +714,7 @@ input {
 }
 
 .discussion-timer {
-    color: var(--color-secondary);
+    color: var(--color-secondary-light);
 }
 
 .voting-timer {
@@ -1388,7 +1389,7 @@ input {
 }
 
 .lobby-button-primary {
-    background-color: var(--color-secondary);
+    background-color: var(--color-secondary-light);
     color: white;
 }
 
