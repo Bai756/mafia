@@ -232,29 +232,29 @@ class AI_Player(Player):
         return self.call_api(messages)
 
     def call_api(self, messages):
-        # payload = {
-        #     "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-        #     "messages": messages,
-        #     "temperature": 0.4,
-        #     "max_tokens": 128,
-        #     "stop": ["\n\n"]
-        # }
+        payload = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "messages": messages,
+            "temperature": 0.4,
+            "max_tokens": 128,
+            "stop": ["\n\n"]
+        }
 
-        # resp = requests.post(
-        #     "https://api.groq.com/openai/v1/chat/completions",
-        #     headers={
-        #         "Content-Type": "application/json",
-        #         "Authorization": f"Bearer {API_KEY}"
-        #     },
-        #     json=payload,
-        #     timeout=30
-        # )
-        # resp.raise_for_status()
-        # data = resp.json()
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {API_KEY}"
+            },
+            json=payload,
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
-        # return data["choices"][0]["message"]["content"].strip()
+        return data["choices"][0]["message"]["content"].strip()
 
-        return call_chatgpt(messages)
+        # return call_chatgpt(messages)
 
 def call_chatgpt(messages):
     response = openai.chat.completions.create(
