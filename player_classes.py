@@ -9,6 +9,7 @@ from prompts import SYSTEM_BASE, SUSPICION_INSTRUCTIONS, ARGUMENT_INSTRUCTIONS, 
 
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
+openai.api_key = API_KEY
 
 class Player:
     def __init__(self, role, name):
