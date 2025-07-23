@@ -670,8 +670,18 @@ document.addEventListener('DOMContentLoaded', function() {
         // Only enable chat during day phase if it's the player's turn and game isn't over
         const enableChat = isDay && isPlayersTurn && !state.isGameOver && state.isAlive;
         
-        // Keep track of the current speaker for UI updates
+        // Check if turn has changed
         if (state.currentSpeaker !== gameState.current_speaker) {
+            // Clear the input field when the turn changes
+            if (discussionElements.messageInput) {
+                discussionElements.messageInput.value = '';
+                if (discussionElements.charCounter) {
+                    discussionElements.charCounter.textContent = '0/150';
+                    discussionElements.charCounter.style.color = '';
+                }
+            }
+            
+            // Update stored current speaker
             state.currentSpeaker = gameState.current_speaker;
         }
         

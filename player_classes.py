@@ -6,6 +6,9 @@ import os
 from dotenv import load_dotenv
 from memory import AgentMemory
 from prompts import SYSTEM_BASE, SUSPICION_INSTRUCTIONS, ARGUMENT_INSTRUCTIONS, ARGUMENT_STYLES
+import logging
+import time
+from datetime import datetime
 
 # load_dotenv()
 # API_KEY1 = os.getenv("API_KEY1")
@@ -15,6 +18,16 @@ from prompts import SYSTEM_BASE, SUSPICION_INSTRUCTIONS, ARGUMENT_INSTRUCTIONS, 
 # API_KEYS = [API_KEY1, API_KEY2, API_KEY3, API_KEY4]
 # API_KEY = os.getenv("API_KEY")
 # openai.api_key = API_KEY
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler("api_calls.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class Player:
     def __init__(self, role, name):
@@ -146,17 +159,22 @@ class AI_Player(Player):
 
     def update_suspicion(self, game_manager):
         history = game_manager.discussion_history.get(game_manager.round_number, [])
+        history = history[-9:] if len(history) > 9 else history
         history_str = '\n'.join(f"{s}: {l}" for s, l in history) or "No discussion yet."
-        alive_players = [p for p in game_manager.get_alive_players() if p.is_alive and p != self]
+        alive = [p for p in game_manager.get_alive_players() if p.is_alive and p != self]
+
+        context = (
+            f"Name:{self.name} Role:{self.role}"
+            + (f" MafiaTeam:{','.join(p.name for p in alive if p.role=='Mafia')}" if self.role=='Mafia' else "")
+            + f" Alive:{','.join(p.name for p in alive)}"
+            + f" Scores:{';'.join(f'{k}:{v:.1f}' for k,v in self.suspicions.items())}" 
+        )
 
         messages = [
             {"role": "system", "content": SYSTEM_BASE},
-            {"role": "user", "content": SUSPICION_INSTRUCTIONS},
-            {"role": "user", "content": f"Your name: {self.name}"},
-            {"role": "user", "content": f"Your role: {self.role}. {"Fellow Mafia: " + ', '.join(p.name for p in alive_players if p.role == "Mafia" and p != self) + "." if self.role == "Mafia" else ""}"},
-            {"role": "user", "content": f"Alive Players: {alive_players}"},
-            {"role": "user", "content": f"Current scores: {self.suspicions}"},
-            {"role": "user", "content": f"Discussion:\n{history_str}"}
+            {"role": "system", "content": SUSPICION_INSTRUCTIONS},
+            {"role": "user", "content": context},
+            {"role": "user", "content": f"Discussion:{history_str}"}
         ]
 
         new_suspicions = self.call_api(messages)
@@ -174,74 +192,62 @@ class AI_Player(Player):
             del self.suspicions[self.name]
 
     def generate_argument(self, game_manager):
-        alive_players = game_manager.get_alive_players()
-        players_list = ', '.join(p.name for p in alive_players)
-        deaths = game_manager.last_deaths
-        deaths_list = ', '.join(f"{p.name} (killed by Mafia)" for p in deaths) if deaths else 'None'
         history = game_manager.discussion_history.get(game_manager.round_number, [])
+        history = history[-4:] if len(history) > 4 else history
         history_str = '\n'.join(f"{s}: {l}" for s, l in history) or "No discussion yet."
-        number_of_mafia = sum(1 for p in alive_players if p.role == "Mafia")
+        alive_players = game_manager.get_alive_players()
 
-        # Create memory of recent actions based on role
-        mem = ""
-        if self.role == "Doctor":
-            try:
-                # Find who this doctor protected, if anyone
-                doctor_actions = [(doctor, p) for doctor, p in game_manager.last_protected if doctor.name == self.name]
-                if doctor_actions:
-                    protected = doctor_actions[0][1]  # Get the protected player
-                    status = 'survived' if protected.is_alive else 'died'
-                    mem = f"- You protected: {protected.name} ({status})"
-            except (AttributeError, IndexError):
-                mem = "- You haven't protected anyone yet."
-
-        elif self.role == "Investigator":
-            try:
-                # Similar defensive coding for investigator
-                investigations = [(name, is_mafia) for investigator, name, is_mafia 
-                                 in game_manager.last_investigated if investigator.name == self.name]
-                if investigations:
-                    name, is_mafia = investigations[0]
-                    result = "Mafia" if is_mafia else "not Mafia"
-                    mem += f"- You investigated: {name} ({result})"
-            except (AttributeError, IndexError):
-                mem += "- You haven't investigated anyone yet."
-
-        elif self.role == "Mafia":
-            fellow_mafia = [p.name for p in alive_players if p.role == "Mafia" and p != self]
-            try:
-                # Be defensive here too
-                if hasattr(game_manager, 'last_targeted') and game_manager.last_targeted:
-                    kill_names = [p.name for _, p in game_manager.last_targeted]
-                    if kill_names:
-                        mem += "- Mafia kills last night: " + ', '.join(kill_names)
-            except AttributeError:
-                mem += "- No mafia kills recorded yet."
-
+        context = (
+            f"Role:{self.role} Name:{self.name}"
+            + (f" Fellow Mafia:{','.join(p.name for p in game_manager.get_alive_players() if p.role=='Mafia' and p!=self)}" if self.role=='Mafia' else "")
+            + f" Alive:{','.join(p.name for p in game_manager.get_alive_players())}"
+            + f" Last Killed:{','.join(p.name for p in game_manager.last_deaths) or 'None'}"
+            + (f" Voted Out:{game_manager.last_voted_out.name}({game_manager.last_voted_out.role[0]})" if game_manager.last_voted_out else " Voted Out:None")
+            + f" Top Suspicions:{','.join(f'{k[:3]}:{v:.1f}' for k,v in sorted(self.suspicions.items(), key=lambda x: x[1], reverse=True)[:3])}" 
+            + f" Round:{game_manager.round_number}"
+            + f" Mafia Left:{sum(1 for p in game_manager.get_alive_players() if p.role=='Mafia')}"
+        )
+        
+        # Role specific context
+        if self.role == "Doctor" and hasattr(game_manager, 'last_protected'):
+            doctor_actions = [(doctor, p) for doctor, p in game_manager.last_protected if doctor.name == self.name]
+            if doctor_actions:
+                context += f" Protected:{doctor_actions[0][1].name}"
+        
+        elif self.role == "Investigator" and hasattr(game_manager, 'last_investigated'):
+            investigations = [(name, is_mafia) for investigator, name, is_mafia in game_manager.last_investigated if investigator.name == self.name]
+            if investigations:
+                name, is_mafia = investigations[0]
+                context += f" Investigated:{name}({'M' if is_mafia else 'NM'})"
+        
         messages = [
             {"role": "system", "content": SYSTEM_BASE},
-            {"role": "user",   "content": ARGUMENT_INSTRUCTIONS},
-            {"role": "user",   "content": f"Your role: {self.role}, Your name: {self.name}, {"Fellow Mafia: " + ", ".join(fellow_mafia) + "." if self.role == "Mafia" else ""}"},
-            {"role": "user",   "content": f"Alive: {players_list}"},
-            {"role": "user",   "content": f"Last deaths: {deaths}"},
-            {"role": "user",   "content": f"Last voted out: {game_manager.last_voted_out.name} was a {game_manager.last_voted_out.role}." if game_manager.last_voted_out else "None"},
-            {"role": "user",   "content": f"Last actions taken: {mem or 'None'}"},
-            {"role": "user",   "content": f"Suspicion scores: {self.suspicions}"},
-            {"role": "user",   "content": f"Round: {game_manager.round_number}"},
-            {"role": "user",   "content": f"Discussion: {history_str}"},
-            {"role": "user",   "content": f"Argument styles: {random.choice(self.argument_style)}"},
-            {"role": "user",   "content": f"Number of Mafia Left: {number_of_mafia}"},
-            {"role": "user",   "content": f"Deaths: {deaths_list}"}
+            {"role": "system", "content": ARGUMENT_INSTRUCTIONS},
+            {"role": "system", "content": f"Argument Style:{self.argument_style}"},
+            {"role": "user", "content": context},
+            {"role": "user", "content": f"Chat:{history_str}"}
         ]
-
+        
         return self.call_api(messages)
 
     def call_api(self, messages):
+        msg_content_length = sum(len(m.get("content", "")) for m in messages)
+        token_estimate = msg_content_length // 4
+        
+        request_id = f"{self.name}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        logger.info(f"API Request [{request_id}] - Role: {self.role}, Est. Tokens: {token_estimate}")
+        
+        for i, msg in enumerate(messages):
+            content_preview = msg.get("content", "")[:50] + "..." if len(msg.get("content", "")) > 50 else msg.get("content", "")
+            logger.debug(f"Message {i}: {msg.get('role')} - {content_preview}")
+        
+        start_time = time.time()
+        
         payload = {
             # "model": "meta-llama/llama-4-scout-17b-16e-instruct",
             "messages": messages,
             # "temperature": 0.4,
-            # "max_tokens": 128,
+            "max_tokens": 32,
             # "stop": ["\n\n"]
         }
 
@@ -255,19 +261,33 @@ class AI_Player(Player):
         #     timeout=30
         # )
 
-        resp = requests.post(
-            "https://ai.hackclub.com/chat/completions",
-            headers={
-                "Content-Type": "application/json"
-            },
-            json=payload,
-            timeout=30
-        )
-
-        resp.raise_for_status()
-        data = resp.json()
-
-        return data["choices"][0]["message"]["content"].strip()
+        try:
+            resp = requests.post(
+                "https://ai.hackclub.com/chat/completions",
+                headers={"Content-Type": "application/json"},
+                json=payload,
+                timeout=30
+            )
+            
+            resp.raise_for_status()
+            data = resp.json()
+            end_time = time.time()
+            duration = end_time - start_time
+            
+            response_content = data["choices"][0]["message"]["content"].strip()
+            
+            response_preview = response_content[:50] + "..." if len(response_content) > 50 else response_content
+            logger.info(f"API Response [{request_id}] - Success - Duration: {duration:.2f}s - Response: {response_preview}")
+            
+            return response_content
+            
+        except Exception as e:
+            end_time = time.time()
+            duration = end_time - start_time
+            
+            logger.error(f"API Error [{request_id}] - Duration: {duration:.2f}s - Error: {str(e)}")
+            
+            return "I need to think about the situation."
 
         # return call_chatgpt(messages)
 

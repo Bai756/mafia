@@ -9,6 +9,9 @@ from game import Game_Manager
 from player_classes import AI_Player, Human_Player
 import logging
 
+logger = logging.getLogger('uvicorn.error')
+logger.setLevel(logging.WARNING)
+
 NIGHT_DURATION = 30
 DISCUSSION_DURATION = 60
 VOTING_DURATION = 30
@@ -22,9 +25,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
-logger = logging.getLogger('uvicorn.error')
-logger.setLevel(logging.DEBUG)
 
 rooms = {}
 room_timers = {}
@@ -279,6 +279,17 @@ async def advance_game_phase(room_id: str):
         success = False
         
     game.check_win_condition()
+    game_over = getattr(game, "game_over", False)
+
+    if game_over and hasattr(game, 'phase_timer') and game.phase_timer:
+        game.phase_timer.cancel()
+        game.phase_timer = None
+        
+        round_num = game.round_number
+        if round_num not in game.discussion_history:
+            game.discussion_history[round_num] = []
+        game.discussion_history[round_num].append(("System", f"Game over! {game.get_game_status()}"))
+    
     await broadcast_to_room(room_id, dump_state(game))
     
     return {"status": "advanced" if success else "failed", "phase": new_phase, "sub_phase": game.sub_phase}
@@ -370,6 +381,13 @@ async def verify_player_in_room(room_id: str, player_data: dict):
         raise HTTPException(status_code=404, detail="Room not found")
 
 async def process_ai_turn(game: Game_Manager, room_id: str):
+    if room_id not in rooms:
+        return
+        
+    # Check if game is already over
+    if getattr(game, "game_over", False):
+        return
+        
     # Make sure it's actually an AI's turn
     current_speaker_name = game.current_speaker
     if not current_speaker_name:
@@ -380,12 +398,15 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
         return
 
     await asyncio.sleep(6)
+    
+    if room_id not in rooms or getattr(game, "game_over", False):
+        return
 
     try:
         ai_message = current_speaker.generate_argument(game)
     except Exception as e:
-        print("Error generating AI argument:", e)
-        ai_message = "Error generating response: " + str(e)
+        logger.error(f"Error generating AI argument: {e}")
+        ai_message = "I'll pass."
     
     # Add the message to the discussion    
     result = game.web_app_manager.add_message(current_speaker_name, ai_message)
@@ -517,6 +538,9 @@ async def broadcast_to_room(room_id: str, message: dict):
     # For each connected player, send them a personalized state
     for player_name, ws in list(clients.items()):
         try:
+            if room_id not in rooms:
+                return
+                
             # Create a personalized copy of the message for this specific player
             if isinstance(message, dict) and message.get("phase") is not None:
                 # This appears to be a game state message, so personalize it
@@ -610,10 +634,14 @@ async def delayed_room_cleanup(room_id: str, delay_seconds: int):
         logger.info(f"Cleanup task for room {room_id} was cancelled")
 
 def handle_action(game: Game_Manager, player_name: str, action_data: dict):
+    room_id = None
     for rm_id, room in rooms.items():
         if room['game'] is game:
             room_id = rm_id
             break
+    
+    if room_id not in rooms or getattr(game, "game_over", False):
+        return {"success": False, "error": "Game is over."}
 
     action_type = action_data.get("action")
     target_name = action_data.get("target")
@@ -715,8 +743,14 @@ def handle_action(game: Game_Manager, player_name: str, action_data: dict):
     return {"success": False, "error": "Invalid action for current phase"}
     
 async def start_phase_timer(room_id: str, duration: int, phase: str, sub_phase: str = None):
-    room = get_room_or_error(room_id)
+    if room_id not in rooms:
+        return
+        
+    room = rooms[room_id]
     game = room['game']
+    
+    if getattr(game, "game_over", False):
+        return
     
     # Cancel and clear any previous timer
     if getattr(game, 'phase_timer', None):
@@ -740,15 +774,27 @@ async def start_phase_timer(room_id: str, duration: int, phase: str, sub_phase: 
     game.phase_timer = asyncio.create_task(phase_timer_task(room_id, duration, phase, game.sub_phase))
 
 async def phase_timer_task(room_id: str, duration: int, phase: str, sub_phase: str):
-    room = get_room_or_error(room_id)
-    game = room['game']
-        
     try:
+        # Check if room still exists before starting
+        if room_id not in rooms:
+            logger.warning(f"Room {room_id} no longer exists, cancelling timer task")
+            return
+            
+        room = rooms[room_id]
+        game = room['game']
+            
         # Countdown with updates
         for remaining in range(duration, 0, -1):
+            # Check if game ended or room was deleted
+            if room_id not in rooms or getattr(game, "game_over", False):
+                logger.info(f"Game over or room deleted, stopping timer for room {room_id}")
+                return
+                
             await asyncio.sleep(1)
             
             if remaining % 3 == 0 or remaining <= 3:
+                if room_id not in rooms:
+                    return
                 await broadcast_to_room(room_id, {
                     **dump_state(game),
                     "timer": remaining,
@@ -762,8 +808,22 @@ async def phase_timer_task(room_id: str, duration: int, phase: str, sub_phase: s
             "sub_phase": game.sub_phase
         })
         
+    except Exception as e:
+        logger.error(f"Error in phase timer task: {str(e)}")
+        return
     finally:
-        game.phase_timer = None
+        if room_id in rooms and hasattr(rooms[room_id]['game'], 'phase_timer'):
+            rooms[room_id]['game'].phase_timer = None
+        
+    # Only proceed with phase transitions if room exists and game not over
+    if room_id not in rooms:
+        return
+        
+    room = rooms[room_id]
+    game = room['game']
+    
+    if getattr(game, "game_over", False):
+        return
         
     # Handle phase transitions based on current phase and sub_phase
     if phase == "night":
@@ -774,7 +834,6 @@ async def phase_timer_task(room_id: str, duration: int, phase: str, sub_phase: s
         elif sub_phase == "voting":
             await handle_voting_timeout(room_id)
         elif sub_phase == "revote_discussion":
-            await start_revote_voting_phase(room_id)
             await start_revote_voting_phase(room_id)
         elif sub_phase == "revote_voting":
             await handle_revoting_timeout(room_id)

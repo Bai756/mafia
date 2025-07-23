@@ -1,12 +1,8 @@
 SYSTEM_BASE = """You are an agent in a text-based game of Mafia."""
 
-SUSPICION_INSTRUCTIONS = """
-Your task: Given the recent discussion and current suspicion scores,
-produce updated suspicion scores for each player in JSON, ignoring yourself. 
-If player is not alive, don't change their score. If the score is already 1.0 or -1.0, keep it unchanged.
-Output a JSON object like this:
-{ "<name>": float, … } each between -1.0 and 1.0, with -1.0 being very trustworthy and 1.0 being very suspicious.
-Do not output anything else.
+SUSPICION_INSTRUCTIONS = """Update suspicion scores for each player. Format: { '<name>': float, ...}. -1=innocent, +1=mafia.
+If the score is already 1.0 or -1.0, keep it unchanged.
+Do not output anything else besides the json scores.
 """
 
 ARGUMENT_INSTRUCTIONS = """
@@ -25,8 +21,9 @@ Do not repeat information that is already known to all players, such as who is d
 Do not repeat statements that have already been made in the discussion.
 Do not repeat phrases other players have used, such as "Frank's death was unfortunate".
 Do not be overly enthusiastic, especially with the '!'.
+Do not use quotes or special formatting.
 Now produce your in-character argument responding to the current round's state.
-Keep it in one paragraph, no quotes or special formatting, max 150 characters.
+Keep it in one paragraph, max 150 characters.
 """
 
 ARGUMENT_STYLES = [

@@ -76,18 +76,18 @@ class WebAppFunctionManager:
                     if valid_targets:
                         target = ai_player.vote(self.game, valid_targets)
                         if target:
-                            print(f"[DEBUG] AI {ai_player.name} (Mafia) targeting {target.name}")
+                            # print(f"[DEBUG] AI {ai_player.name} (Mafia) targeting {target.name}")
                             self.mafia_action(ai_player.name, target.name)
                             self.game.last_targeted.append((ai_player, target))
                 elif ai_player.role == "Doctor" and valid_targets:
                     target = ai_player.vote(self.game, valid_targets)
                     if target:
-                        print(f"[DEBUG] AI {ai_player.name} (Doctor) protecting {target.name}")
+                        # print(f"[DEBUG] AI {ai_player.name} (Doctor) protecting {target.name}")
                         self.doctor_action(ai_player.name, target.name)
                 elif ai_player.role == "Investigator" and valid_targets:
                     target = ai_player.vote(self.game, valid_targets)
                     if target:
-                        print(f"[DEBUG] AI {ai_player.name} (Investigator) investigating {target.name}")
+                        # print(f"[DEBUG] AI {ai_player.name} (Investigator) investigating {target.name}")
                         self.investigator_action(ai_player.name, target.name)
 
             # Recalculate who needs to act after AI actions
