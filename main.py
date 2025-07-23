@@ -10,7 +10,7 @@ from player_classes import AI_Player, Human_Player
 import logging
 
 NIGHT_DURATION = 30
-DISCUSSION_DURATION = 90
+DISCUSSION_DURATION = 60
 VOTING_DURATION = 30
 REVOTE_DISCUSSION_DURATION = 45
 
@@ -378,7 +378,9 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
     current_speaker = next((p for p in game.players if p.name == current_speaker_name), None)
     if not current_speaker or not isinstance(current_speaker, AI_Player) or not current_speaker.is_alive:
         return
-        
+
+    await asyncio.sleep(6)
+
     try:
         ai_message = current_speaker.generate_argument(game)
     except Exception as e:
@@ -395,7 +397,6 @@ async def process_ai_turn(game: Game_Manager, room_id: str):
         if game.current_speaker and game.current_speaker != current_speaker_name:
             next_speaker = next((p for p in game.players if p.name == game.current_speaker), None)
             if next_speaker and isinstance(next_speaker, AI_Player) and next_speaker.is_alive:
-                await asyncio.sleep(5)
                 asyncio.create_task(process_ai_turn(game, room_id))
 
 def dump_state(game: Game_Manager, player_name: str = None):

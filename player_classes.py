@@ -7,9 +7,14 @@ from dotenv import load_dotenv
 from memory import AgentMemory
 from prompts import SYSTEM_BASE, SUSPICION_INSTRUCTIONS, ARGUMENT_INSTRUCTIONS, ARGUMENT_STYLES
 
-load_dotenv()
-API_KEY = os.getenv("API_KEY")
-openai.api_key = API_KEY
+# load_dotenv()
+# API_KEY1 = os.getenv("API_KEY1")
+# API_KEY2 = os.getenv("API_KEY2")
+# API_KEY3 = os.getenv("API_KEY3")
+# API_KEY4 = os.getenv("API_KEY4")
+# API_KEYS = [API_KEY1, API_KEY2, API_KEY3, API_KEY4]
+# API_KEY = os.getenv("API_KEY")
+# openai.api_key = API_KEY
 
 class Player:
     def __init__(self, role, name):
@@ -233,22 +238,32 @@ class AI_Player(Player):
 
     def call_api(self, messages):
         payload = {
-            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            # "model": "meta-llama/llama-4-scout-17b-16e-instruct",
             "messages": messages,
-            "temperature": 0.4,
-            "max_tokens": 128,
-            "stop": ["\n\n"]
+            # "temperature": 0.4,
+            # "max_tokens": 128,
+            # "stop": ["\n\n"]
         }
 
+        # resp = requests.post(
+        #     "https://api.groq.com/openai/v1/chat/completions",
+        #     headers={
+        #         "Content-Type": "application/json",
+        #         "Authorization": f"Bearer {random.choice(API_KEYS)}"
+        #     },
+        #     json=payload,
+        #     timeout=30
+        # )
+
         resp = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
+            "https://ai.hackclub.com/chat/completions",
             headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {API_KEY}"
+                "Content-Type": "application/json"
             },
             json=payload,
             timeout=30
         )
+
         resp.raise_for_status()
         data = resp.json()
 
