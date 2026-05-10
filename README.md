@@ -1,4 +1,4 @@
-# Mafia Game Web Application
+# Mafia
 
 An interactive web-based implementation of the classic social deduction game **Mafia** (also known as **Werewolf**), featuring AI players powered by reinforcement learning.
 
