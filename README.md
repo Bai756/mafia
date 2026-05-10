@@ -1,18 +1,6 @@
 # Mafia
 
-An interactive web-based implementation of the classic social deduction game **Mafia** (also known as **Werewolf**), featuring AI players powered by reinforcement learning.
-
----
-
-## Overview
-
-This project is a multiplayer implementation of Mafia.
-
-- Real-time multiplayer gameplay  
-- AI opponents powered by reinforcement learning (PPO)
-- Special roles: Mafia, Villager, Doctor, Investigator  
-
----
+An interactive web-based implementation of the classic social deduction game **Mafia** (also known as **Werewolf**), featuring AI players trained using reinforcement learning.
 
 ## How it works
 
@@ -30,6 +18,8 @@ Each agent observes:
 Agents are rewarded for winning (+5), penalized for losing (-5), and get 
 smaller rewards for good play mid-game — like the Doctor saving someone or 
 the Investigator correctly flagging a Mafia member.
+
+---
 
 ## Installation
 
