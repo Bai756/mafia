@@ -14,6 +14,23 @@ This project is a multiplayer implementation of Mafia.
 
 ---
 
+## How it works
+
+The AI players are trained with PPO (Proximal Policy Optimization) using 
+RLlib and PettingZoo. Each role — Mafia, Villager, Doctor, Investigator — 
+has its own policy trained independently through self-play. During discussion 
+phases, agents communicate via an LLM.
+
+Each agent observes:
+- Which players are still alive
+- Its own role and suspicion scores for every other player
+- A memory vector encoding past events (deaths, votes, investigations)
+- The current phase (day/night) and round number
+
+Agents are rewarded for winning (+5), penalized for losing (-5), and get 
+smaller rewards for good play mid-game — like the Doctor saving someone or 
+the Investigator correctly flagging a Mafia member.
+
 ## Installation
 
 ### Requirements
