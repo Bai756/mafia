@@ -192,10 +192,10 @@ class AI_Player(Player):
             del self.suspicions[self.name]
 
     def generate_argument(self, game_manager):
+        print(f"{self.name} is generating an argument...")
         history = game_manager.discussion_history.get(game_manager.round_number, [])
         history = history[-4:] if len(history) > 4 else history
         history_str = '\n'.join(f"{s}: {l}" for s, l in history) or "No discussion yet."
-        alive_players = game_manager.get_alive_players()
 
         context = (
             f"Role:{self.role} Name:{self.name}"
@@ -241,7 +241,7 @@ class AI_Player(Player):
             content_preview = msg.get("content", "")[:50] + "..." if len(msg.get("content", "")) > 50 else msg.get("content", "")
             logger.debug(f"Message {i}: {msg.get('role')} - {content_preview}")
         
-        # start_time = time.time()
+        start_time = time.time()
         
         # payload = {
         #     # "model": "meta-llama/llama-4-scout-17b-16e-instruct",
@@ -277,7 +277,7 @@ class AI_Player(Player):
         #     response_content = data["choices"][0]["message"]["content"].strip()
             
         #     response_preview = response_content[:50] + "..." if len(response_content) > 50 else response_content
-        #     logger.info(f"API Response [{request_id}] - Success - Duration: {duration:.2f}s - Response: {response_preview}")
+            # logger.info(f"API Response [{request_id}] - Success - Duration: {duration:.2f}s - Response: {response_preview}")
             
         #     return response_content
             
@@ -289,17 +289,32 @@ class AI_Player(Player):
             
         #     return "I need to think about the situation."
 
-        return call_chatgpt(messages)
 
-def call_chatgpt(messages):
-    response = openai.chat.completions.create(
-        model="gpt-5.4-mini",
-        messages=messages,
-        reasoning_effort="medium",
-        # max_completion_tokens=32
-    )
+        response = openai.chat.completions.create(
+                model="gpt-5.4-mini",
+                messages=messages,
+                reasoning_effort="medium",
+                # max_completion_tokens=32
+            )
+        end_time = time.time()
+        duration = end_time - start_time
 
-    return response.choices[0].message.content.strip()
+        response_content = response.choices[0].message.content.strip()
+        response_preview = response_content[:50] + "..." if len(response_content) > 50 else response_content
+        logger.info(f"API Response [{request_id}] - Success - Duration: {duration:.2f}s - Response: {response_preview}")
+        return response_content
+
+        # return call_chatgpt(messages)
+
+# def call_chatgpt(messages):
+#     response = openai.chat.completions.create(
+#         model="gpt-5.4-mini",
+#         messages=messages,
+#         reasoning_effort="medium",
+#         # max_completion_tokens=32
+#     )
+
+#     return response.choices[0].message.content.strip()
 
 
 if __name__ == "__main__":

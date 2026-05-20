@@ -1,4 +1,5 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
 from player_classes import Human_Player, AI_Player
 
 class PhaseManager:
@@ -115,9 +116,11 @@ class PhaseManager:
 
         self.discussion_phase(60)
 
-        for player in self.game.get_alive_players():
-            if isinstance(player, AI_Player):
-                player.update_suspicion(self.game)
+        ai_players = [player for player in self.game.get_alive_players() if isinstance(player, AI_Player)]
+        with ThreadPoolExecutor(max_workers=len(ai_players) or 1) as executor:
+            futures = [executor.submit(player.update_suspicion, self.game) for player in ai_players]
+            for future in futures:
+                future.result()
 
         self.voting_phase()
         

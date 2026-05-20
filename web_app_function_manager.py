@@ -283,7 +283,9 @@ class WebAppFunctionManager:
         }
     
     def add_message(self, player_name, message):
-        if self.game.get_game_phase() == "day" and self.game.is_player_speaker(player_name):
+        if (self.game.get_game_phase() == "day" and 
+            self.game.is_player_speaker(player_name) and 
+            getattr(self.game, 'sub_phase', None) == "discussion"):
             round_number = self.game.round_number
             if round_number not in self.game.discussion_history:
                 self.game.discussion_history[round_number] = []

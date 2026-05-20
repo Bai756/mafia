@@ -13,7 +13,7 @@ logger = logging.getLogger('uvicorn.error')
 logger.setLevel(logging.WARNING)
 
 NIGHT_DURATION = 30
-DISCUSSION_DURATION = 60
+DISCUSSION_DURATION = 10
 VOTING_DURATION = 30
 REVOTE_DISCUSSION_DURATION = 45
 
@@ -909,9 +909,8 @@ async def start_voting_phase(room_id: str):
     
     game.votes = {}
 
-    for player in game.get_alive_players():
-        if isinstance(player, AI_Player):
-            player.update_suspicion(game)
+    ai_players = [player for player in game.get_alive_players() if isinstance(player, AI_Player)]
+    await asyncio.gather(*(asyncio.to_thread(player.update_suspicion, game) for player in ai_players))
     
     # AI players vote immediately
     await make_ai_players_vote(room_id, is_revote=False)
@@ -1041,9 +1040,8 @@ async def start_revote_voting_phase(room_id: str):
     
     game.votes = {}
 
-    for player in game.get_alive_players():
-        if isinstance(player, AI_Player):
-            player.update_suspicion(game)
+    ai_players = [player for player in game.get_alive_players() if isinstance(player, AI_Player)]
+    await asyncio.gather(*(asyncio.to_thread(player.update_suspicion, game) for player in ai_players))
     
     await make_ai_players_vote(room_id, is_revote=True)
 
