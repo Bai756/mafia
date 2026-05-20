@@ -10,14 +10,14 @@ import logging
 import time
 from datetime import datetime
 
-# load_dotenv()
+load_dotenv()
 # API_KEY1 = os.getenv("API_KEY1")
 # API_KEY2 = os.getenv("API_KEY2")
 # API_KEY3 = os.getenv("API_KEY3")
 # API_KEY4 = os.getenv("API_KEY4")
 # API_KEYS = [API_KEY1, API_KEY2, API_KEY3, API_KEY4]
-# API_KEY = os.getenv("API_KEY")
-# openai.api_key = API_KEY
+API_KEY = os.getenv("API_KEY")
+openai.api_key = API_KEY
 
 logging.basicConfig(
     level=logging.INFO,
@@ -241,15 +241,15 @@ class AI_Player(Player):
             content_preview = msg.get("content", "")[:50] + "..." if len(msg.get("content", "")) > 50 else msg.get("content", "")
             logger.debug(f"Message {i}: {msg.get('role')} - {content_preview}")
         
-        start_time = time.time()
+        # start_time = time.time()
         
-        payload = {
-            # "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-            "messages": messages,
-            # "temperature": 0.4,
-            "max_tokens": 32,
-            # "stop": ["\n\n"]
-        }
+        # payload = {
+        #     # "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        #     "messages": messages,
+        #     # "temperature": 0.4,
+        #     "max_tokens": 128,
+        #     # "stop": ["\n\n"]
+        # }
 
         # resp = requests.post(
         #     "https://api.groq.com/openai/v1/chat/completions",
@@ -261,43 +261,52 @@ class AI_Player(Player):
         #     timeout=30
         # )
 
-        try:
-            resp = requests.post(
-                "https://ai.hackclub.com/chat/completions",
-                headers={"Content-Type": "application/json"},
-                json=payload,
-                timeout=30
-            )
+        # try:
+        #     resp = requests.post(
+        #         "https://ai.hackclub.com/chat/completions",
+        #         headers={"Content-Type": "application/json"},
+        #         json=payload,
+        #         timeout=30
+        #     )
             
-            resp.raise_for_status()
-            data = resp.json()
-            end_time = time.time()
-            duration = end_time - start_time
+        #     resp.raise_for_status()
+        #     data = resp.json()
+        #     end_time = time.time()
+        #     duration = end_time - start_time
             
-            response_content = data["choices"][0]["message"]["content"].strip()
+        #     response_content = data["choices"][0]["message"]["content"].strip()
             
-            response_preview = response_content[:50] + "..." if len(response_content) > 50 else response_content
-            logger.info(f"API Response [{request_id}] - Success - Duration: {duration:.2f}s - Response: {response_preview}")
+        #     response_preview = response_content[:50] + "..." if len(response_content) > 50 else response_content
+        #     logger.info(f"API Response [{request_id}] - Success - Duration: {duration:.2f}s - Response: {response_preview}")
             
-            return response_content
+        #     return response_content
             
-        except Exception as e:
-            end_time = time.time()
-            duration = end_time - start_time
+        # except Exception as e:
+        #     end_time = time.time()
+        #     duration = end_time - start_time
             
-            logger.error(f"API Error [{request_id}] - Duration: {duration:.2f}s - Error: {str(e)}")
+        #     logger.error(f"API Error [{request_id}] - Duration: {duration:.2f}s - Error: {str(e)}")
             
-            return "I need to think about the situation."
+        #     return "I need to think about the situation."
 
-        # return call_chatgpt(messages)
+        return call_chatgpt(messages)
 
 def call_chatgpt(messages):
     response = openai.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5.4-mini",
         messages=messages,
-        temperature=0.4,
-        max_tokens=128,
-        stop=["\n\n"]
+        reasoning_effort="medium",
+        # max_completion_tokens=32
     )
 
     return response.choices[0].message.content.strip()
+
+
+if __name__ == "__main__":
+    player = AI_Player("Alice")
+    messages = [
+        {"role": "system", "content": SYSTEM_BASE},
+        {"role": "user", "content": "Test message for API call."}
+    ]
+    response = player.call_api(messages)
+    print(f"API Response: {response}")

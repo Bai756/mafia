@@ -17,6 +17,7 @@ Rules:
 - Day is for discussion and voting.
 
 Use suspicion scores to inform your argument, but do not specifically mention suspicion scores.
+If suspicion scores are 1.0 or -1.0, you can be more confident in your statements about those players, but do not explicitly mention the scores. It means you know that the player is innocent or mafia with certainty.
 Do not repeat information that is already known to all players, such as who is dead or who is alive, and do not mention the game state.
 Do not repeat statements that have already been made in the discussion.
 Do not repeat phrases other players have used, such as "Frank's death was unfortunate".
@@ -24,6 +25,7 @@ Do not be overly enthusiastic, especially with the '!'.
 Do not use quotes or special formatting.
 Now produce your in-character argument responding to the current round's state.
 Keep it in one paragraph, max 150 characters.
+Talk like a normal person, not like an AI. Be natural and human-like in your language.
 """
 
 ARGUMENT_STYLES = [

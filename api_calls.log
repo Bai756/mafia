@@ -1,2 +1,54 @@
 2025-07-23 18:40:08,555 [INFO] 1 change detected
 2025-07-23 18:40:54,592 [INFO] Stopping reloader process [81439]
+2026-05-20 08:06:19,981 [INFO] API Request [Alice_20260520080619] - Role: Villager, Est. Tokens: 18
+2026-05-20 08:06:21,967 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-20 08:06:37,667 [INFO] API Request [Alice_20260520080637] - Role: Villager, Est. Tokens: 18
+2026-05-20 08:06:39,278 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-20 08:07:16,494 [INFO] API Request [Alice_20260520080716] - Role: Villager, Est. Tokens: 18
+2026-05-20 08:07:17,276 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-20 08:07:29,243 [INFO] API Request [Alice_20260520080729] - Role: Villager, Est. Tokens: 18
+2026-05-20 08:07:30,442 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:09:03,623 [INFO] API Request [Alice_20260520080903] - Role: Villager, Est. Tokens: 359
+2026-05-20 08:09:05,455 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:09:11,470 [INFO] API Request [Bob_20260520080911] - Role: Investigator, Est. Tokens: 360
+2026-05-20 08:09:13,186 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:09:19,193 [INFO] API Request [Dana_20260520080919] - Role: Villager, Est. Tokens: 343
+2026-05-20 08:09:20,454 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:09:26,457 [INFO] API Request [Eve_20260520080926] - Role: Villager, Est. Tokens: 330
+2026-05-20 08:09:27,415 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:09:33,420 [INFO] API Request [Frank_20260520080933] - Role: Villager, Est. Tokens: 314
+2026-05-20 08:09:34,216 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:09:40,223 [INFO] API Request [Grace_20260520080940] - Role: Doctor, Est. Tokens: 309
+2026-05-20 08:09:41,097 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:10:12,186 [INFO] API Request [Alice_20260520081012] - Role: Villager, Est. Tokens: 361
+2026-05-20 08:10:14,235 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:10:20,246 [INFO] API Request [Bob_20260520081020] - Role: Villager, Est. Tokens: 373
+2026-05-20 08:10:21,823 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:10:27,828 [INFO] API Request [Charlie_20260520081027] - Role: Mafia, Est. Tokens: 400
+2026-05-20 08:10:30,299 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:10:36,456 [INFO] API Request [Dana_20260520081036] - Role: Villager, Est. Tokens: 409
+2026-05-20 08:10:39,209 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:10:45,215 [INFO] API Request [Eve_20260520081045] - Role: Villager, Est. Tokens: 422
+2026-05-20 08:10:47,733 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:10:53,737 [INFO] API Request [Frank_20260520081053] - Role: Investigator, Est. Tokens: 430
+2026-05-20 08:10:57,889 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:11:03,894 [INFO] API Request [Grace_20260520081103] - Role: Villager, Est. Tokens: 425
+2026-05-20 08:11:06,943 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:13:02,619 [INFO] API Request [Alice_20260520081302] - Role: Villager, Est. Tokens: 437
+2026-05-20 08:13:05,894 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:13:11,918 [INFO] API Request [Bob_20260520081311] - Role: Villager, Est. Tokens: 450
+2026-05-20 08:13:14,046 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:13:20,052 [INFO] API Request [Charlie_20260520081320] - Role: Mafia, Est. Tokens: 478
+2026-05-20 08:13:22,836 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:13:29,013 [INFO] API Request [Dana_20260520081329] - Role: Villager, Est. Tokens: 480
+2026-05-20 08:13:31,337 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:13:37,343 [INFO] API Request [Eve_20260520081337] - Role: Villager, Est. Tokens: 489
+2026-05-20 08:13:39,732 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:13:45,737 [INFO] API Request [Frank_20260520081345] - Role: Mafia, Est. Tokens: 497
+2026-05-20 08:13:47,414 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:13:53,420 [INFO] API Request [Grace_20260520081353] - Role: Investigator, Est. Tokens: 493
+2026-05-20 08:13:55,754 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:14:01,763 [INFO] API Request [Ivy_20260520081401] - Role: Villager, Est. Tokens: 487
+2026-05-20 08:14:04,493 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-20 08:14:10,495 [INFO] API Request [Alice_20260520081410] - Role: Villager, Est. Tokens: 483
+2026-05-20 08:14:12,911 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
