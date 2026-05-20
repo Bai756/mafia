@@ -25,8 +25,8 @@ the Investigator correctly flagging a Mafia member.
 
 ### Requirements
 
-- Python 3.9+
-- Check `requirements.txt`
+- Python 3.11
+- `requirements.txt`
 
 ### Setup
 
